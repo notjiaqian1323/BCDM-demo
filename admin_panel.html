@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BCDS Security Command Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-panel: #1e293b;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-amber: #f59e0b;
+            --accent-blue: #3b82f6;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: 'Roboto Mono', monospace;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* UTILS */
+        .text-green { color: var(--accent-green); }
+        .text-red { color: var(--accent-red); }
+        .text-amber { color: var(--accent-amber); }
+        .text-blue { color: var(--accent-blue); }
+        .pulse { animation: pulse-animation 2s infinite; }
+        @keyframes pulse-animation { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        /* HEADER HUD */
+        .header-hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+        .brand { font-size: 1.5rem; font-weight: 700; letter-spacing: 1px; }
+        .hud-stats { display: flex; gap: 20px; }
+        .hud-item { background: var(--bg-panel); padding: 10px 15px; border-radius: 6px; border: 1px solid var(--border-color); }
+        .hud-label { font-size: 0.8rem; color: var(--text-secondary); display: block; }
+        .hud-value { font-size: 1.2rem; font-weight: 700; }
+
+        /* MAIN LAYOUT GRID */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr; /* 2/3 for Feed, 1/3 for Watchlist */
+            gap: 20px;
+            flex-grow: 1;
+            overflow: hidden; /* Important for scrolling zones */
+        }
+
+        /* PANELS General Style */
+        .panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .panel-header {
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* ZONE 1: LIVE SURVEILLANCE FEED */
+        .live-feed-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #0a0f1d; /* Slightly darker terminal bg */
+        }
+        /* Scrollbar styling for the feed */
+        .live-feed-container::-webkit-scrollbar { width: 8px; }
+        .live-feed-container::-webkit-scrollbar-track { background: #0a0f1d; }
+        .live-feed-container::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+
+        .log-entry {
+            padding: 8px;
+            border-bottom: 1px solid #33415540;
+            font-size: 0.9rem;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+        .log-time { color: var(--text-secondary); white-space: nowrap; }
+        .log-type { font-weight: 700; width: 90px; }
+        .log-detail { flex-grow: 1; word-break: break-word; }
+
+        /* ZONE 2: WATCHLIST & ACTIONS */
+        .watchlist-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .watchlist-table th { text-align: left; padding: 10px; color: var(--text-secondary); background: rgba(0,0,0,0.2); }
+        .watchlist-table td { padding: 10px; border-bottom: 1px solid var(--border-color); }
+
+        .score-indicator { display: inline-block; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+        .score-low { background: #451a03; color: #fbbf24; border: 1px solid #fbbf24; } /* Amber/Brown */
+        .score-critical { background: #450a0a; color: #f87171; border: 1px solid #f87171; } /* Red */
+
+        .btn-action {
+            background: var(--border-color);
+            color: var(--text-primary);
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.8rem;
+        }
+        .btn-action:hover { background: var(--text-secondary); color: var(--bg-dark); }
+        .btn-freeze { background: #7f1d1d; color: #fecaca; border: 1px solid #ef4444; }
+        .btn-freeze:hover { background: #ef4444; color: white; }
+
+        .btn-logout {
+            background: #7f1d1d; color: white; padding: 10px 20px; border: 1px solid #ef4444; border-radius: 4px; cursor:pointer; font-family: inherit; font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<header class="header-hud">
+    <div class="brand">
+        🛡️ BCDS <span class="text-blue">COMMAND CENTER</span>
+    </div>
+    <div class="hud-stats">
+        <div class="hud-item">
+            <span class="hud-label">SYSTEM STATUS</span>
+            <span class="hud-value text-green"><span class="pulse">●</span> OPERATIONAL</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-label">TOTAL USERS</span>
+            <span class="hud-value">142</span>
+        </div>
+        <div class="hud-item" style="border-color: var(--accent-red);">
+            <span class="hud-label">AT-RISK USERS (< 50)</span>
+            <span class="hud-value text-red">5</span>
+        </div>
+        <button class="btn-logout" onclick="logout()">🛑 LOGOUT ADMIN</button>
+    </div>
+</header>
+
+<main class="main-grid">
+
+    <section class="panel">
+        <div class="panel-header">
+            <span>🔴 Live Security Event Log</span>
+            <span class="text-secondary" style="font-size: 0.8rem;">Real-time Stream</span>
+        </div>
+
+        <div class="live-feed-container" id="liveFeed">
+            <div style="padding: 20px; text-align: center; color: #666;">
+                Waiting for data stream...
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <span>⚠️ High-Risk Targets (Probation)</span>
+        </div>
+        <div style="padding: 10px;">
+            <table class="watchlist-table">
+                <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Score</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>unsafe_user<br><small class="text-secondary">ID: 6971...</small></td>
+                    <td><span class="score-indicator score-critical">45</span></td>
+                    <td>
+                        <button class="btn-action btn-freeze">❄️ Freeze</button>
+                        <button class="btn-action">👁️ Logs</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td>spammer_X</td>
+                    <td><span class="score-indicator score-low">58</span></td>
+                    <td>
+                        <button class="btn-action btn-freeze">❄️ Freeze</button>
+                        <button class="btn-action">👁️ Logs</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td>another_risk</td>
+                    <td><span class="score-indicator score-low">62</span></td>
+                    <td>
+                        <button class="btn-action">👁️ Logs</button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="panel-header" style="margin-top: auto; border-top: 1px solid var(--border-color); background: transparent;">
+            <span style="font-size: 0.9rem;">⛓️ Audit Links</span>
+        </div>
+        <div style="padding: 15px; display: flex; gap: 10px;">
+            <button class="btn-action" style="width: 100%; background: var(--accent-blue); color: white; border:none;">📜 View Full Blockchain Ledger</button>
+        </div>
+    </section>
+
+</main>
+
+<script>
+    // --- Basic Auth Check for Admin ---
+    const token = localStorage.getItem('token');
+    // In a real scenario, you'd verify the token and role with the backend here.
+    if (!token) {
+        // window.location.href = 'login.html';
+        console.warn("No token found. Redirecting to login in prod.");
+    }
+
+    const feed = document.getElementById('liveFeed');
+
+    // 🎨 1. Smart Color Mapper
+    // Assigns colors based on the "Type" of log coming from the server
+    function getLogColor(type) {
+        const map = {
+            'AUTH': 'text-green',           // Logins/Registers
+            'SUCCESS': 'text-green',        // Clean Scans
+            'ACCESS': 'text-blue',
+            'UPLOAD': 'text-blue',          // File Uploads
+            'WORKER': 'text-blue',          // AI Processing
+            'WARN': 'text-amber',           // Duplicates/Deletions
+            'UI_INTERACTION': 'text-secondary', // Clicks/Toggles
+            'SECURITY': 'text-red',         // Failed Logins/Bans
+            'CRITICAL': 'text-red',         // PII Found
+            'ERROR': 'text-red'             // Server Crashes
+        };
+        return map[type] || 'text-primary'; // Default white if unknown
+    }
+
+    // 🔄 2. The Fetch Engine
+    async function fetchLogs() {
+        try {
+            // Call the API we created earlier
+            const res = await fetch('http://localhost:5000/api/admin/logs', {
+                headers: { 'x-auth-token': localStorage.getItem('token') } // Send Admin Token
+            });
+
+            if (!res.ok) throw new Error("Unauthorized");
+
+            const logs = await res.json();
+
+            // Clear the "Waiting..." text
+            if(logs.length > 0) feed.innerHTML = '';
+
+            // Render each log line
+            const html = logs.map(log => {
+                const colorClass = getLogColor(log.type);
+
+                return `
+                <div class="log-entry">
+                    <span class="log-time">[${log.timestamp}]</span>
+                    <span class="log-type ${colorClass}">${log.type}</span>
+                    <span class="log-detail">${log.message}</span>
+                </div>`;
+            }).join('');
+
+            // Only update DOM if something changed (prevents flickering)
+            if (feed.innerHTML !== html) {
+                feed.innerHTML = html;
+            }
+
+        } catch (err) {
+            console.error("Stream Error:", err);
+            // Optional: feed.innerHTML = '<div style="color:red">OFFLINE - CHECK SERVER</div>';
+        }
+    }
+
+    // 🚀 3. Start the Engine
+    // Update every 1 second for that "Matrix" feel
+    setInterval(fetchLogs, 1000);
+    fetchLogs(); // Run immediately on load
+
+    function logout() {
+        localStorage.removeItem('token');
+        window.location.href = 'login.html';
+    }
+
+    // Auto-scroll the live feed to the bottom
+    feed.scrollTop = feed.scrollHeight;
+</script>
+</body>
+</html>

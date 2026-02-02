@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BCDS Secure Dashboard</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; max-width: 1000px; margin: 2rem auto; background: #f4f6f9; color: #333; }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .full-width { grid-column: span 2; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h2 { margin-top: 0; font-size: 1.2rem; border-bottom: 2px solid #eee; padding-bottom: 15px; color: #444; }
+        .status-box { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #2196f3; }
+
+        button { cursor: pointer; padding: 10px; color: white; border: none; border-radius: 6px; font-weight: bold; transition: 0.2s; }
+        button:hover { opacity: 0.9; }
+
+        .btn-upload { background: #6c757d; width: 100%; padding: 12px; }
+        .btn-view-chain { background: #343a40; }
+        .btn-hide-chain { background: #6c757d; display: none; }
+        .btn-download { background: #17a2b8; }
+        .btn-preview { background: #2ecc71; }
+        .btn-share { background: #f39c12; }
+        .btn-delete { background: #dc3545; }
+        .btn-report { background: #6f42c1; } /* Purple for AI Report */
+        .btn-logout { background: #c0392b; float: right; }
+
+        /* Compliance Badges */
+        .badge { padding: 5px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; display: inline-block; }
+        .badge-pending { background: #fff3cd; color: #856404; } /* Yellow */
+        .badge-scanning { background: #cce5ff; color: #004085; animation: pulse 1.5s infinite; } /* Blue Pulse */
+        .badge-clean { background: #d4edda; color: #155724; } /* Green */
+        .badge-redacted { background: #f8d7da; color: #721c24; } /* Red */
+        .badge-skipped { background: #e2e3e5; color: #383d41; } /* Grey */
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; }
+
+        /* MODAL */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); }
+        .modal-content { background: white; margin: 10% auto; padding: 20px; width: 600px; border-radius: 8px; position: relative; }
+        .modal-img { max-width: 100%; max-height: 80vh; display: block; margin: 0 auto; }
+        .close-modal { position: absolute; top: 10px; right: 20px; font-size: 25px; cursor: pointer; color: #333; }
+
+        /* JSON Report Pretty Print */
+        pre { background: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #ddd; overflow-x: auto; }
+    </style>
+</head>
+<body>
+
+<button onclick="logout()" class="btn-logout">🚪 Logout</button>
+<h1>🚀 BCDS Secure Dashboard</h1>
+
+<div class="grid">
+    <div class="card">
+        <h2>📂 Secure Upload</h2>
+        <form id="uploadForm">
+            <input type="file" name="file" required style="margin-bottom: 15px;">
+
+            <div style="background: #fff3cd; padding: 10px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #ffeeba;">
+                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" name="runCompliance" style="width: 20px; height: 20px; margin-top: 3px;">
+                    <div>
+                        <strong>🛡️ Enable AI Compliance Scan</strong><br>
+                        <small style="color: #666;">Detects & Redacts PII (Names, IDs). Slower upload.</small>
+                    </div>
+                </label>
+            </div>
+
+            <button type="submit" class="btn-upload">🔒 Encrypt & Upload</button>
+        </form>
+        <div id="uploadResult" style="margin-top: 10px;"></div>
+    </div>
+
+    <div class="card">
+        <h2>💎 Account Status</h2>
+        <div class="status-box" id="subStatus">Loading...</div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn-preview" onclick="upgradePlan('Premium')">⬆️ Upgrade</button>
+            <button class="btn-delete" onclick="resetPlan()">🔄 Reset</button>
+        </div>
+    </div>
+
+    <div class="card full-width">
+        <h2>🗂️ My Cloud Files</h2>
+        <button onclick="loadFiles()" style="width: auto; background: #6c757d; margin-bottom: 15px;">🔄 Refresh List</button>
+        <table style="width:100%">
+            <thead>
+            <tr>
+                <th>File Name</th>
+                <th>Size</th>
+                <th>Compliance Status</th> <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody id="fileListBody"><tr><td colspan="4">Loading...</td></tr></tbody>
+        </table>
+    </div>
+
+    <div class="card full-width">
+        <h2>⛓️ Blockchain Ledger (Audit Trail)</h2>
+        <div style="display: flex; gap: 10px;">
+            <button id="btnViewChain" onclick="loadChain()" class="btn-view-chain">📜 View Immutable Log</button>
+            <button id="btnHideChain" onclick="hideChain()" class="btn-hide-chain">❌ Close</button>
+        </div>
+        <div id="chainViewer" style="margin-top: 15px;"></div>
+    </div>
+</div>
+
+<div id="imageModal" class="modal">
+    <div class="modal-content" style="width: auto; max-width: 80%; background: transparent; box-shadow: none;">
+        <span class="close-modal" onclick="closeModal('imageModal')" style="color: white;">&times;</span>
+        <img class="modal-img" id="previewImg">
+    </div>
+</div>
+
+<div id="reportModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeModal('reportModal')">&times;</span>
+        <h3>🔍 NLP Compliance Report</h3>
+        <p><strong>Analysis Results:</strong></p>
+        <div id="reportContent">Loading...</div>
+        <button onclick="closeModal('reportModal')" style="width: 100%; margin-top: 15px; background: #333;">Close</button>
+    </div>
+</div>
+
+<script>
+    // --- CONFIG & AUTH ---
+    const API_URL = 'http://localhost:5000/api';
+    const token = localStorage.getItem('token');
+    const authHeaders = { 'x-auth-token': token };
+
+    // Helper: Auth Check
+    // if (!token) window.location.href = 'login.html'; // Uncomment in prod
+
+    function logout() { localStorage.removeItem('token'); window.location.href = 'login.html'; }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024; const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // --- 1. UPLOAD LOGIC ---
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const resultDiv = document.getElementById('uploadResult');
+        resultDiv.innerHTML = "⏳ Processing...";
+
+        const formData = new FormData(e.target);
+        // Checkbox value handling: if checked, send 'true'
+        const runCompliance = e.target.runCompliance.checked;
+        formData.set('runCompliance', runCompliance);
+
+        try {
+            const res = await fetch(`${API_URL}/storage/upload`, {
+                method: 'POST',
+                headers: authHeaders,
+                body: formData
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                resultDiv.innerHTML = `<p style="color:green; font-weight:bold;">✅ ${data.msg}</p>`;
+                loadFiles(); // Refresh list immediately
+
+                // If scanning started, start polling for status updates
+                if (runCompliance) startPolling(data.file._id);
+
+                // Log to blockchain (UI Feedback only)
+                logToBlockchain(data.file._id, resultDiv);
+            } else {
+                resultDiv.innerHTML = `<p style="color:red;">❌ ${data.msg}</p>`;
+            }
+        } catch (err) {
+            resultDiv.innerHTML = `<p style="color:red;">❌ Network Error (Is server running?)</p>`;
+        }
+    });
+
+    // --- 2. FILE LIST & STATUS POLLING ---
+    async function loadFiles() {
+        const listBody = document.getElementById('fileListBody');
+        try {
+            const res = await fetch(`${API_URL}/storage/files`, { headers: authHeaders });
+            const files = await res.json();
+            renderFileList(files);
+        } catch (err) {
+            listBody.innerHTML = '<tr><td colspan="4">Failed to load files (Backend Offline?)</td></tr>';
+        }
+    }
+
+    function renderFileList(files) {
+        const listBody = document.getElementById('fileListBody');
+        if (files.length === 0) { listBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No files yet.</td></tr>'; return; }
+
+        let html = '';
+        files.forEach(file => {
+            // Determine Badge Style
+            let badgeClass = 'badge-skipped';
+            let badgeText = 'Standard';
+
+            if (file.complianceStatus === 'pending') { badgeClass = 'badge-pending'; badgeText = '🟡 Pending'; }
+            else if (file.complianceStatus === 'scanning') { badgeClass = 'badge-scanning'; badgeText = '🔵 Scanning...'; }
+            else if (file.complianceStatus === 'clean') { badgeClass = 'badge-clean'; badgeText = '🟢 Safe (Clean)'; }
+            else if (file.complianceStatus === 'redacted') { badgeClass = 'badge-redacted'; badgeText = '🔴 PII Redacted'; }
+            else if (file.complianceStatus === 'failed') { badgeClass = 'badge-redacted'; badgeText = '❌ Scan Failed'; }
+
+            // Actions
+            const isImage = file.fileName.match(/\.(jpeg|jpg|gif|png)$/i);
+
+            // Show "Report" button only if scan was run
+            const showReport = (file.complianceStatus !== 'skipped' && file.complianceStatus !== 'pending');
+
+            html += `
+                <tr id="row-${file._id}">
+                    <td>${file.fileName}</td>
+                    <td>${formatBytes(file.fileSize)}</td>
+                    <td><span class="badge ${badgeClass}" id="status-${file._id}">${badgeText}</span></td>
+                    <td style="display:flex; gap:5px;">
+                        ${isImage ? `<button class="btn-preview" onclick="previewFile('${file._id}')" title="Preview">👁️</button>` : ''}
+                        <button class="btn-download" onclick="downloadFile('${file._id}', '${file.fileName}')" title="Download">⬇️</button>
+                        ${showReport ? `<button class="btn-report" onclick="viewReport('${file._id}')" title="View NLP Analysis">📊</button>` : ''}
+                        <button class="btn-share" onclick="shareFile('${file._id}')" title="Share Link">🔗</button>
+                        <button class="btn-delete" onclick="deleteFile('${file._id}')" title="Delete">🗑️</button>
+                    </td>
+                </tr>`;
+        });
+        listBody.innerHTML = html;
+    }
+
+    // --- 3. AUTO-POLLING LOGIC ---
+    // Checks status every 2 seconds for files that are 'scanning'
+    function startPolling(fileId) {
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch(`${API_URL}/storage/status/${fileId}`, { headers: authHeaders });
+                const data = await res.json();
+
+                // Update Badge in UI
+                const statusSpan = document.getElementById(`status-${fileId}`);
+                if (statusSpan) {
+                    if (data.status === 'scanning') {
+                        statusSpan.className = 'badge badge-scanning';
+                        statusSpan.innerText = '🔵 Scanning...';
+                    } else if (data.status === 'clean') {
+                        statusSpan.className = 'badge badge-clean';
+                        statusSpan.innerText = '🟢 Safe (Clean)';
+                        clearInterval(interval); // Stop polling
+                        loadFiles(); // Reload to show "Report" button
+                    } else if (data.status === 'redacted') {
+                        statusSpan.className = 'badge badge-redacted';
+                        statusSpan.innerText = '🔴 PII Redacted';
+                        clearInterval(interval);
+                        loadFiles();
+                    } else if (data.status === 'failed') {
+                        statusSpan.innerText = '❌ Failed';
+                        clearInterval(interval);
+                    }
+                }
+            } catch (e) { clearInterval(interval); }
+        }, 2000);
+    }
+
+    // --- 4. VIEW REPORT MODAL ---
+    async function viewReport(fileId) {
+        const modal = document.getElementById('reportModal');
+        const content = document.getElementById('reportContent');
+        modal.style.display = 'block';
+        content.innerHTML = 'Fetching analysis...';
+
+        try {
+            const res = await fetch(`${API_URL}/storage/status/${fileId}`, { headers: authHeaders });
+            const data = await res.json();
+
+            if (data.report && data.report.length > 0) {
+                // Pretty Print JSON
+                content.innerHTML = `<pre>${JSON.stringify(data.report, null, 2)}</pre>`;
+                content.innerHTML += `<p style="color:red; margin-top:10px;">⚠️ ${data.report.length} Sensitive entities found and redacted.</p>`;
+            } else {
+                content.innerHTML = `<div style="text-align:center; padding:20px;">
+                        <h3 style="color:green;">✅ Clean Document</h3>
+                        <p>No Personally Identifiable Information (PII) was detected by the AI.</p>
+                    </div>`;
+            }
+        } catch (e) { content.innerText = "Error loading report."; }
+    }
+
+    // --- 5. STANDARD ACTIONS (Preview, Download, Share, Delete) ---
+    async function downloadFile(id, name) {
+        try {
+            const res = await fetch(`${API_URL}/storage/download/${id}`, { headers: authHeaders });
+            if(!res.ok) throw new Error("Fail");
+            const blob = await res.blob();
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = name;
+            link.click();
+        } catch(e) { alert("Download failed."); }
+    }
+
+    async function previewFile(id) {
+        const modal = document.getElementById('imageModal');
+        const img = document.getElementById('previewImg');
+        try {
+            const res = await fetch(`${API_URL}/storage/download/${id}`, { headers: authHeaders });
+            const blob = await res.blob();
+            img.src = window.URL.createObjectURL(blob);
+            modal.style.display = 'block';
+        } catch(e) { alert("Could not preview image."); }
+    }
+
+    async function shareFile(id) {
+        try {
+            const res = await fetch(`${API_URL}/storage/share/${id}`, { method: 'POST', headers: authHeaders });
+            const data = await res.json();
+            if(res.ok) prompt("🔗 Public Share Link (Valid for 24h):", data.link);
+            else alert(data.msg); // Show error (e.g., Trust Score too low)
+        } catch(e) { alert("Server Error"); }
+    }
+
+    async function deleteFile(id) {
+        if(!confirm("Permanently delete this file?")) return;
+        try {
+            await fetch(`${API_URL}/storage/files/${id}`, { method: 'DELETE', headers: authHeaders });
+            loadFiles(); loadStatus();
+        } catch(e) { alert("Delete failed"); }
+    }
+
+    // --- 6. BLOCKCHAIN LOGIC ---
+    async function loadChain() {
+        const viewer = document.getElementById('chainViewer');
+        document.getElementById('btnViewChain').style.display = 'none';
+        document.getElementById('btnHideChain').style.display = 'block';
+        viewer.innerHTML = "Fetching Immutable Ledger...";
+
+        try {
+            const res = await fetch(`${API_URL}/blockchain/chain`);
+            const chain = await res.json();
+            viewer.innerHTML = chain.map(b => {
+                // Check if it's a Penalty or Upload block
+                const isPenalty = b.data && b.data.type === 'REPUTATION_PENALTY';
+                const color = isPenalty ? '#ffe6e6' : '#fff'; // Red background for penalties
+
+                return `<div style="border:1px solid #ddd; padding:10px; margin-bottom:5px; background:${color}; border-left: 5px solid ${isPenalty ? 'red' : 'green'};">
+                        <strong>Block #${b.index}</strong> | ${b.timestamp}<br>
+                        <small>Hash: ${b.hash.substring(0,20)}...</small><br>
+                        <pre style="font-size:0.8em; margin:5px 0;">${JSON.stringify(b.data, null, 2)}</pre>
+                    </div>`;
+            }).join('');
+        } catch(e) { viewer.innerHTML = "Error loading chain."; }
+    }
+
+    function hideChain() {
+        document.getElementById('chainViewer').innerHTML = "";
+        document.getElementById('btnViewChain').style.display = 'block';
+        document.getElementById('btnHideChain').style.display = 'none';
+    }
+
+    // Mock Blockchain Logger for UI Feedback
+    async function logToBlockchain(fileId, element) {
+        element.innerHTML += `<div style="color:blue; font-size:0.9em; margin-top:5px;">⛓️ Transaction broadcasted to Blockchain Ledger...</div>`;
+    }
+
+    // Helper: Modal Closer
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    // --- 7. SUBSCRIPTION & PLAN (Basic) ---
+    async function loadStatus() {
+        try {
+            const res = await fetch(`${API_URL}/subscription/status`, { headers: authHeaders });
+            const data = await res.json();
+            document.getElementById('subStatus').innerHTML = `
+                    <strong>Plan:</strong> ${data.package}<br>
+                    <strong>Used:</strong> ${formatBytes(data.used)} / ${formatBytes(data.limit)} (${data.percentage})
+                `;
+        } catch(e) { document.getElementById('subStatus').innerText = "Account Info Unavailable"; }
+    }
+
+    // Initial Load
+    loadStatus();
+    loadFiles();
+
+</script>
+</body>
+</html>

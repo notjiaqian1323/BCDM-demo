@@ -1,0 +1,20 @@
+# Ignore Node.js dependencies
+node_modules/
+.env
+
+# Ignore Python Virtual Environments (pymodules)
+pymodules/Lib
+pymodules/Scripts
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Ignore Large Model Files (Unless you use Git LFS)
+model-best/
+*.enc
+*.pdf
+
+# Ignore System Files
+.DS_Store
+Thumbs.db
