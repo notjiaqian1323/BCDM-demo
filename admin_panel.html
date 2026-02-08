@@ -18,6 +18,8 @@
             --border-color: #334155;
         }
 
+        * { box-sizing: border-box; } /* CRITICAL FIX: Ensures padding doesn't increase width */
+
         body {
             font-family: 'Roboto Mono', monospace;
             background-color: var(--bg-dark);
@@ -25,20 +27,19 @@
             margin: 0;
             padding: 20px;
             height: 100vh;
-            box-sizing: border-box;
             display: flex;
             flex-direction: column;
+            overflow: hidden; /* Prevent body scroll on desktop */
         }
 
-        /* UTILS */
+        /* --- UTILS --- */
         .text-green { color: var(--accent-green); }
         .text-red { color: var(--accent-red); }
-        .text-amber { color: var(--accent-amber); }
         .text-blue { color: var(--accent-blue); }
-        .pulse { animation: pulse-animation 2s infinite; }
-        @keyframes pulse-animation { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
 
-        /* HEADER HUD */
+        /* --- HEADER HUD (Desktop Default) --- */
         .header-hud {
             display: flex;
             justify-content: space-between;
@@ -46,23 +47,66 @@
             padding-bottom: 20px;
             border-bottom: 2px solid var(--border-color);
             margin-bottom: 20px;
+            flex-shrink: 0; /* Prevent header from shrinking */
         }
-        .brand { font-size: 1.5rem; font-weight: 700; letter-spacing: 1px; }
-        .hud-stats { display: flex; gap: 20px; }
-        .hud-item { background: var(--bg-panel); padding: 10px 15px; border-radius: 6px; border: 1px solid var(--border-color); }
-        .hud-label { font-size: 0.8rem; color: var(--text-secondary); display: block; }
-        .hud-value { font-size: 1.2rem; font-weight: 700; }
+        .brand { font-size: 1.5rem; font-weight: 700; letter-spacing: 1px; white-space: nowrap; margin-right: 20px; }
 
-        /* MAIN LAYOUT GRID */
+        .hud-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr); /* 4 Equal Columns */
+            gap: 15px;
+            width: 100%;
+            max-width: 800px; /* Prevent it from stretching too wide on 4k screens */
+        }
+
+        /* UNIFIED CARD STYLE */
+        .hud-item, .btn-logout {
+            background: var(--bg-panel);
+            padding: 12px 15px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+
+            /* Flexbox to center text vertically */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center; /* Center text horizontally */
+
+            height: 80px; /* FORCE SAME HEIGHT */
+            min-width: 140px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        /* TYPOGRAPHY */
+        .hud-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+            font-weight: 600;
+            white-space: nowrap; /* Prevent label wrapping */
+        }
+        .hud-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .hud-alert {
+            border-color: rgba(239, 68, 68, 0.4);
+            background: rgba(239, 68, 68, 0.05); /* Subtle red tint */
+        }
+        /* --- MAIN LAYOUT --- */
         .main-grid {
             display: grid;
-            grid-template-columns: 2fr 1fr; /* 2/3 for Feed, 1/3 for Watchlist */
+            grid-template-columns: 2fr 1fr; /* 2:1 Split */
             gap: 20px;
-            flex-grow: 1;
-            overflow: hidden; /* Important for scrolling zones */
+            flex: 1; /* Fill remaining height */
+            min-height: 0; /* CRITICAL: Allows nested scrollbars to work */
         }
 
-        /* PANELS General Style */
+        /* --- PANELS --- */
         .panel {
             background: var(--bg-panel);
             border: 1px solid var(--border-color);
@@ -72,65 +116,235 @@
             overflow: hidden;
         }
         .panel-header {
-            padding: 15px;
-            background: rgba(0,0,0,0.2);
+            padding: 12px 15px;
+            background: rgba(0,0,0,0.3);
             border-bottom: 1px solid var(--border-color);
             font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
             display: flex;
             justify-content: space-between;
+            align-items: center;
         }
 
-        /* ZONE 1: LIVE SURVEILLANCE FEED */
+        /* --- ZONE 1: LOGS --- */
         .live-feed-container {
-            flex-grow: 1;
+            flex: 1;
             overflow-y: auto;
-            padding: 10px;
-            background: #0a0f1d; /* Slightly darker terminal bg */
-        }
-        /* Scrollbar styling for the feed */
-        .live-feed-container::-webkit-scrollbar { width: 8px; }
-        .live-feed-container::-webkit-scrollbar-track { background: #0a0f1d; }
-        .live-feed-container::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
-
-        .log-entry {
-            padding: 8px;
-            border-bottom: 1px solid #33415540;
+            padding: 15px;
+            font-family: 'Consolas', monospace;
             font-size: 0.9rem;
-            display: flex;
-            gap: 10px;
-            align-items: flex-start;
         }
-        .log-time { color: var(--text-secondary); white-space: nowrap; }
-        .log-type { font-weight: 700; width: 90px; }
-        .log-detail { flex-grow: 1; word-break: break-word; }
+        .log-entry { margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+        .log-time { color: var(--text-secondary); margin-right: 10px; }
+        .log-type { display: inline-block; width: 80px; font-weight: bold; }
 
-        /* ZONE 2: WATCHLIST & ACTIONS */
-        .watchlist-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-        .watchlist-table th { text-align: left; padding: 10px; color: var(--text-secondary); background: rgba(0,0,0,0.2); }
-        .watchlist-table td { padding: 10px; border-bottom: 1px solid var(--border-color); }
+        /* --- ZONE 2: WATCHLIST --- */
+        .table-wrapper {
+            overflow-x: auto; /* Handles horizontal scroll if username is long */
+            flex: 1;
+        }
+        .watchlist-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .watchlist-table th, .watchlist-table td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color); }
 
-        .score-indicator { display: inline-block; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
-        .score-low { background: #451a03; color: #fbbf24; border: 1px solid #fbbf24; } /* Amber/Brown */
-        .score-critical { background: #450a0a; color: #f87171; border: 1px solid #f87171; } /* Red */
-
+        /* Buttons */
         .btn-action {
-            background: var(--border-color);
-            color: var(--text-primary);
+            padding: 6px 10px;
             border: none;
-            padding: 4px 8px;
             border-radius: 4px;
             cursor: pointer;
-            font-family: inherit;
-            font-size: 0.8rem;
+            font-weight: 600;
+            font-size: 0.75rem;
+            transition: 0.2s;
+            /* Default: Side by side */
+            display: inline-block;
+            margin-right: 5px;
         }
-        .btn-action:hover { background: var(--text-secondary); color: var(--bg-dark); }
-        .btn-freeze { background: #7f1d1d; color: #fecaca; border: 1px solid #ef4444; }
+        .btn-freeze { background: #450a0a; color: #fecaca; border: 1px solid #ef4444; margin-right: 5px; }
         .btn-freeze:hover { background: #ef4444; color: white; }
 
+        /* LOGOUT BUTTON (Now looks like a card) */
         .btn-logout {
-            background: #7f1d1d; color: white; padding: 10px 20px; border: 1px solid #ef4444; border-radius: 4px; cursor:pointer; font-family: inherit; font-weight: bold;
+            background: #450a0a; /* Dark Red Background */
+            border: 1px solid #ef4444;
+            color: #fecaca;
+            cursor: pointer;
+            font-family: 'Roboto Mono', monospace;
+            padding: 0; /* Remove default padding, let flex handle it */
+        }
+
+        .btn-logout:hover {
+            background: #ef4444;
+            color: white;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+        }
+
+        /* =========================================================
+        📱 LANDSCAPE TABLET / NETBOOK (1024px - 1200px)
+        ========================================================= */
+        @media (max-width: 1200px) {
+
+            /* 1. Stack the Brand Title on TOP */
+            .header-hud {
+                flex-direction: column; /* Stack vertically */
+                gap: 15px;
+                text-align: center;
+            }
+
+            .brand {
+                margin-right: 0;
+                font-size: 1.8rem; /* Make title slightly bigger since it has room */
+            }
+
+            /* 2. Keep Stats in ONE ROW (4 Columns) */
+            /* This fills the width perfectly on 1024px screens */
+            .hud-stats {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 10px;
+                width: 100%;
+            }
+
+            /* Ensure cards reset to standard size */
+            .hud-item, .btn-logout {
+                height: 70px; /* Slightly shorter to save vertical space on 600px screens */
+            }
+
+            /* 3. Panel Layout Adjustments */
+            /* Since height is small (600px), we stack panels to avoid squishing */
+            .main-grid {
+                grid-template-columns: 1.5fr 1fr;
+            }
+
+            /* 4. Fix Action Buttons (Stack them to save horizontal table space) */
+            .watchlist-table td:last-child {
+                width: 90px;
+            }
+            .btn-action {
+                display: block;
+                width: 100%;
+                margin-bottom: 4px;
+            }
+        }
+
+        /* =========================================
+           📱 MOBILE RESPONSIVENESS (The Fixes)
+           ========================================= */
+        @media (max-width: 900px) {
+
+            body {
+                padding: 10px;
+                height: auto; /* Allow scrolling on body */
+                overflow: auto;
+            }
+
+            /* 1. Header: Stack Brand and Stats */
+            .header-hud {
+                flex-direction: column;
+                align-items: stretch; /* Full width items */
+                gap: 15px;
+            }
+
+            .brand { text-align: center; margin-right: 0; margin-bottom: 5px; }
+
+            /* 2. Stats Grid: 2 Columns, with Logout button spanning full width */
+            .hud-stats {
+                display: grid;
+                grid-template-columns: 1fr 1fr; /* 2 equal columns */
+                gap: 10px;
+                width: 100%;
+            }
+
+            /* Make the "Total Users" and "At Risk" take 1 slot each */
+            .hud-item { min-width: 0; text-align: center; }
+            .hud-item:nth-child(3) {
+                grid-column: 1 / -1; /* Span from first line to last line */
+            }
+
+            /* Make Logout button take the full bottom row */
+            .btn-logout {
+                grid-column: 1 / -1; /* Span all columns */
+                margin-top: 5px;
+            }
+
+            /* 3. Main Grid: Stack Panels Vertical */
+            .main-grid {
+                display: flex;
+                flex-direction: column;
+                height: auto;
+            }
+
+            /* 4. Log Panel Fixes */
+            .live-feed-container {
+                max-height: 350px; /* Limit height so it doesn't take whole screen */
+                min-height: 250px;
+                font-size: 0.8rem;
+            }
+
+            /* 5. Table Fixes */
+            .watchlist-table th:nth-child(2),
+            .watchlist-table td:nth-child(2) {
+                display: none; /* OPTIONAL: Hide "Score" column on very small screens to save space */
+            }
+
+            .btn-action {
+                display: block;
+                width: 100%;
+                margin-bottom: 4px;
+                text-align: center;
+            }
+        }
+        /* =========================================================
+       📱 MICRO-MOBILE (iPhone 12 Mini, Fold, SE < 480px)
+       ========================================================= */
+        @media (max-width: 480px) {
+
+            /* 1. Body Padding: Reclaim screen edge space */
+            body {
+                padding: 10px;
+            }
+
+            /* 2. Header Brand: Scale down slightly */
+            .brand {
+                font-size: 1.2rem;
+                white-space: normal; /* Allow wrapping if "BCDS" is long */
+                text-align: center;
+            }
+
+            /* 3. HUD Stats: FULL WIDTH STACK */
+            /* This is the key fix. Instead of squeezing 2 cards side-by-side,
+               we give each card the full width of the phone. */
+            .hud-stats {
+                grid-template-columns: 1fr; /* 1 Column only */
+                gap: 8px;
+            }
+
+            /* 4. Compact Card Layout (Row instead of Column) */
+            /* Since we stacked them vertically, we change the INSIDE of the card
+               to be horizontal (Label on left, Value on right) to save height. */
+            .hud-item {
+                flex-direction: row; /* Switch to horizontal layout */
+                justify-content: space-between;
+                align-items: center;
+                height: 50px; /* Reduce height from 80px to 50px */
+                padding: 0 15px;
+            }
+
+            .hud-label {
+                margin-bottom: 0; /* Remove bottom margin */
+                font-size: 0.75rem;
+                text-align: left;
+            }
+
+            .hud-value {
+                font-size: 1rem;
+                text-align: right;
+            }
+
+            /* 5. Logout Button: Keep it big and visible */
+            .btn-logout {
+                height: 50px;
+                flex-direction: row;
+                gap: 10px;
+            }
         }
     </style>
 </head>
@@ -149,11 +363,13 @@
             <span class="hud-label">TOTAL USERS</span>
             <span class="hud-value">142</span>
         </div>
-        <div class="hud-item" style="border-color: var(--accent-red);">
-            <span class="hud-label">AT-RISK USERS (< 50)</span>
+        <div class="hud-item hud-alert">
+            <span class="hud-label text-red">At-Risk ( < 50 )</span>
             <span class="hud-value text-red">5</span>
         </div>
-        <button class="btn-logout" onclick="logout()">🛑 LOGOUT ADMIN</button>
+        <button class="btn-logout" onclick="logout()">
+            LOGOUT ADMIN
+        </button>
     </div>
 </header>
 
