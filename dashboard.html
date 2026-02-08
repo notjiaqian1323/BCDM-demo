@@ -283,28 +283,93 @@
         }, 2000);
     }
 
-    // --- 4. VIEW REPORT MODAL ---
+    // --- 4. VIEW REPORT MODAL (PROFESSIONAL TABLE VERSION) ---
     async function viewReport(fileId) {
         const modal = document.getElementById('reportModal');
         const content = document.getElementById('reportContent');
         modal.style.display = 'block';
-        content.innerHTML = 'Fetching analysis...';
+
+        // Show Loading State
+        content.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">🔍 Decrypting & Fetching Audit Log...</div>';
 
         try {
             const res = await fetch(`${API_URL}/storage/status/${fileId}`, { headers: authHeaders });
             const data = await res.json();
 
-            if (data.report && data.report.length > 0) {
-                // Pretty Print JSON
-                content.innerHTML = `<pre>${JSON.stringify(data.report, null, 2)}</pre>`;
-                content.innerHTML += `<p style="color:red; margin-top:10px;">⚠️ ${data.report.length} Sensitive entities found and redacted.</p>`;
+            // 🛑 CASE 1: THREATS FOUND
+            if (data.piiReport && data.piiReport.length > 0) {
+
+                // Build Rows
+                const rows = data.piiReport.map(item => {
+                    // Color Code the Badges
+                    let badgeColor = '#3b82f6'; // Blue (Email)
+                    if(item.type.includes('NRIC') || item.type.includes('CREDIT')) badgeColor = '#ef4444'; // Red (High Risk)
+                    if(item.type.includes('PHONE')) badgeColor = '#f59e0b'; // Amber
+
+                    return `
+                <tr style="border-bottom:1px solid #334155;">
+                    <td style="padding:12px;">
+                        <span style="background:${badgeColor}20; color:${badgeColor}; padding:4px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; border:1px solid ${badgeColor};">
+                            ${item.type}
+                        </span>
+                    </td>
+                    <td style="padding:12px; font-family:'Consolas', monospace; color:#e2e8f0;">
+                        ${item.text}
+                    </td>
+                    <td style="padding:12px; text-align:center; color:#94a3b8;">
+                        Pg ${item.page}
+                    </td>
+                    <td style="padding:12px; text-align:right;">
+                        <span style="color:${item.score > 0.8 ? '#10b981' : '#f59e0b'}; font-weight:bold;">
+                            ${(item.score * 100).toFixed(0)}%
+                        </span>
+                    </td>
+                </tr>`;
+                }).join('');
+
+                // Build Table
+                content.innerHTML = `
+                <div style="background:#0f172a; border-radius:8px; overflow:hidden; border:1px solid #334155;">
+                    <div style="padding:15px; background:#1e293b; border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="color:#ef4444; font-weight:bold;">🚨 VIOLATIONS DETECTED</span>
+                        <span style="background:#ef4444; color:white; padding:2px 8px; border-radius:10px; font-size:0.8rem;">${data.piiReport.length}</span>
+                    </div>
+
+                    <div style="max-height:400px; overflow-y:auto;">
+                        <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+                            <thead style="background:#1e293b; color:#94a3b8; font-size:0.8rem; text-transform:uppercase;">
+                                <tr>
+                                    <th style="padding:10px; text-align:left;">Type</th>
+                                    <th style="padding:10px; text-align:left;">Redacted Content</th>
+                                    <th style="padding:10px; text-align:center;">Loc</th>
+                                    <th style="padding:10px; text-align:right;">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <p style="margin-top:15px; font-size:0.8rem; color:#94a3b8; text-align:center;">
+                    ℹ️ These entities have been permanently redacted from the file stored on cloud.
+                </p>
+            `;
+
+                // ✅ CASE 2: CLEAN FILE
             } else {
-                content.innerHTML = `<div style="text-align:center; padding:20px;">
-                        <h3 style="color:green;">✅ Clean Document</h3>
-                        <p>No Personally Identifiable Information (PII) was detected by the AI.</p>
-                    </div>`;
+                content.innerHTML = `
+                <div style="text-align:center; padding:40px;">
+                    <div style="font-size:3rem; margin-bottom:10px;">🛡️</div>
+                    <h3 style="color:#10b981; margin:0;">Clean Document</h3>
+                    <p style="color:#94a3b8; margin-top:5px;">No Sensitive PII was detected by the NLP Engine.</p>
+                </div>`;
             }
-        } catch (e) { content.innerText = "Error loading report."; }
+
+        } catch (e) {
+            console.error(e);
+            content.innerHTML = `<p style="color:red; text-align:center;">❌ Error loading compliance report.</p>`;
+        }
     }
 
     // --- 5. STANDARD ACTIONS (Preview, Download, Share, Delete) ---

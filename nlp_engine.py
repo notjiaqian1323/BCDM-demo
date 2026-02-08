@@ -38,7 +38,8 @@ except Exception as e:
     log_debug(f"❌ Critical Error loading GLiNER: {e}")
     sys.exit(1)
 
-LABELS = ["person", "nric number", "mail address", "home address"]
+# 🎯 TARGET LABELS (Removed 'person' and 'address' to reduce noise)
+LABELS = ["nric number", "passport number", "phone number", "email address", "credit card number"]
 
 # --- 2. CLEANER ---
 def clean_text_minimal(text):
@@ -48,76 +49,83 @@ def clean_text_minimal(text):
     text = re.sub(r'(?i)doi\.org/\S+', ' ', text) # Remove DOIs early to stop false flags
     return text
 
-# --- 3. MAIN PROCESS (FIXED) ---
-def process_pdf(input_pdf_path, output_pdf_path):
-    log_debug(f"📂 Opening PDF: {input_pdf_path}")
-    doc = fitz.open(input_pdf_path)
+# --- 2. REGEX PATTERNS (The "Hard" Check) ---
+REGEX_PATTERNS = {
+    # Malaysia NRIC: YYMMDD-PB-#### (with or without hyphens)
+    "NRIC_REGEX": r"\b\d{6}-?\d{2}-?\d{4}\b",
+
+    # Credit Card: 13-19 digits, often grouped
+    "CC_REGEX": r"\b(?:\d{4}[-\s]?){3}\d{4}\b",
+
+    # Email: Standard format
+    "EMAIL_REGEX": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+
+    # Phone: Malaysia Mobile (+60 or 01)
+    "PHONE_REGEX": r"\b(?:01[0-46-9]-?\d{7,8}|011-?\d{8})\b"
+}
+
+def process_pdf(input_path, output_path):
+    doc = fitz.open(input_path)
     final_findings = []
 
-    # Iterate through pages
     for page_num, page in enumerate(doc):
-        log_debug(f"--- Processing Page {page_num + 1} ---")
-
-        # 1. Get Text (Standard or OCR)
-        # Try standard text first
+        # 1. Get Text
         text = page.get_text()
 
-        # If text is too short, try OCR (if configured)
-        if len(text) < 50:
-            log_debug("    📸 Scanned Image Detected! Activating OCR...")
-            try:
-                # Use a temporary textpage for OCR
-                # We need this object to map coordinates later
-                ocr_page = page.get_textpage_ocr(flags=3, dpi=300, full=True)
-                text = ocr_page.extractText()
-            except Exception as e:
-                log_debug(f"    ❌ OCR Failed: {e}")
-                continue
+        # --- A. REGEX SCANNING (Deterministic) ---
+        # We search for patterns BEFORE using AI
+        for label, pattern in REGEX_PATTERNS.items():
+            matches = re.findall(pattern, text)
+            for match in matches:
+                # Add to findings
+                final_findings.append({
+                    "text": match,
+                    "type": label,
+                    "page": page_num + 1,
+                    "score": 1.0 # Regex is 100% confident
+                })
 
-        # 2. CHUNKING (The Fix)
-        # We split the text by newlines to get rough "paragraphs" or lines.
-        # This helps GLiNER focus on specific contexts.
-        chunks = [line for line in text.split('\n') if len(line.strip()) > 10]
+                # Highlight immediately
+                hit_list = page.search_for(match)
+                for rect in hit_list:
+                    annot = page.add_redact_annot(rect) # REDACT (Black Box)
+                    annot.update()
 
-        log_debug(f"    📝 Split page into {len(chunks)} chunks for analysis.")
+        # --- B. AI SCANNING (Contextual) ---
+        # Split into chunks for GLiNER
+        chunks = [line for line in text.split('\n') if len(line.strip()) > 15]
 
-        # 3. Analyze each chunk
         for chunk in chunks:
-            # Clean slightly
-            chunk_clean = clean_text_minimal(chunk)
+            clean_chunk = clean_text_minimal(chunk)
 
             # Predict
-            entities = model.predict_entities(chunk_clean, LABELS, threshold=0.3)
+            entities = model.predict_entities(clean_chunk, LABELS, threshold=0.5) # Higher threshold
 
             for ent in entities:
                 text_found = ent["text"]
                 label_found = ent["label"]
                 score = ent["score"]
 
-                # Filter bad results
-                if len(text_found) < 3: continue # Skip noise like "Mr"
-                if score < 0.35: continue # Skip weak matches
+                # SKIP LOGIC (Reduce False Positives)
+                # 1. If it's just 4 digits (e.g., Year "2022"), ignore it
+                if label_found == "nric number" and len(text_found) < 6: continue
 
-                log_debug(f"      ✅ MATCH: '{text_found}' ({label_found}) - {score:.2f}")
+                # 2. If score is weak
+                if score < 0.60: continue
 
-                # 4. HIGHLIGHT (The tricky part)
-                # We search for the *exact text* on the *entire page*
-                # hit_list returns a list of Rect objects (boxes)
+                # Check if we already found this via Regex (Optimization)
+                # (Simple check to avoid double-boxing)
+                already_found = any(f['text'] == text_found for f in final_findings)
+                if already_found: continue
+
+                # Highlight
                 hit_list = page.search_for(text_found)
-
                 if hit_list:
                     for rect in hit_list:
-                        # Draw the highlight
-                        annot = page.add_highlight_annot(rect)
-
-                        # Color coding
-                        if "nric" in label_found: annot.set_colors(stroke=(1, 0, 0)) # Red
-                        elif "address" in label_found: annot.set_colors(stroke=(0, 0, 1)) # Blue
-                        else: annot.set_colors(stroke=(1, 1, 0)) # Yellow
-
+                        # Use Redaction Annotation (Black Box) instead of Highlight
+                        annot = page.add_redact_annot(rect)
                         annot.update()
 
-                    # Add to report
                     final_findings.append({
                         "text": text_found,
                         "type": label_found.upper(),
@@ -125,10 +133,10 @@ def process_pdf(input_pdf_path, output_pdf_path):
                         "score": round(score, 2)
                     })
 
-    # Save the modified PDF
-    doc.save(output_pdf_path)
-    log_debug(f"💾 Saved annotated PDF to {output_pdf_path}")
+        # Apply all redactions for this page (Burns the black boxes in)
+        page.apply_redactions()
 
+    doc.save(output_path)
     return final_findings
 
 if __name__ == "__main__":
