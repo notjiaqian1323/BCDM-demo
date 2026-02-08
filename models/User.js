@@ -37,6 +37,11 @@ const UserSchema = new mongoose.Schema({
     // If true, user is completely locked out
     isBanned: { type: Boolean, default: false },
 
+    banReason: {
+        type: String,
+        default: null // Stores "Violation of Terms" or "Spamming"
+    },
+
     // If set, user is temporarily suspended until this date
     banExpires: { type: Date, default: null },
 
@@ -54,9 +59,17 @@ UserSchema.methods.isRestricted = function() {
 
 // Helper method to check if user is banned
 UserSchema.methods.checkBanStatus = function() {
-    if (this.isBanned) return true;
-    if (this.banExpires && this.banExpires > new Date()) return true;
-    return false;
+    if (!this.isBanned) return false; // Not banned
+
+    // Check if ban has expired
+    if (this.banExpires && new Date() > this.banExpires) {
+        this.isBanned = false;
+        this.banReason = null;
+        this.banExpires = null;
+        this.save(); // Auto-unban
+        return false;
+    }
+    return true; // Still banned
 };
 
 module.exports = mongoose.model('User', UserSchema);
