@@ -127,6 +127,24 @@
     </div>
 </div>
 
+<div id="banModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:9999; justify-content:center; align-items:center;">
+    <div style="background:#1a1a1a; padding:40px; border-radius:15px; border: 2px solid #ff4444; text-align:center; max-width:500px; color:white; box-shadow: 0 0 50px rgba(255, 68, 68, 0.5);">
+        <h1 style="font-size:3rem; margin:0;">🚫</h1>
+        <h2 style="color:#ff4444;">ACCOUNT FROZEN</h2>
+        <p style="font-size:1.1rem; margin-top:20px;">
+            The Administrator has suspended your account due to the following violation:
+        </p>
+
+        <div id="banReasonText" style="background:#330000; padding:15px; border-radius:8px; margin:20px 0; color:#ffaaaa; font-weight:bold; border:1px solid #ff4444;">
+            Suspicious Activity Detected
+        </div>
+
+        <p class="text-secondary">
+            You will be redirected to the login page in <span id="banCountdown" style="color:white; font-weight:bold; font-size:1.5rem;">5</span> seconds.
+        </p>
+    </div>
+</div>
+
 <script>
     // --- CONFIG & AUTH ---
     const API_URL = 'http://localhost:5000/api';
@@ -378,6 +396,63 @@
                     <strong>Used:</strong> ${formatBytes(data.used)} / ${formatBytes(data.limit)} (${data.percentage})
                 `;
         } catch(e) { document.getElementById('subStatus').innerText = "Account Info Unavailable"; }
+    }
+
+    // --- 🛡️ LIVE SECURITY CHECK ---
+    // Polls the server every 3 seconds to check ban status
+    setInterval(checkAccountStatus, 3000);
+
+    async function checkAccountStatus() {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return; // Already logged out
+
+            const res = await fetch('http://localhost:5000/api/auth/status', {
+                headers: { 'x-auth-token': token }
+            });
+
+            const data = await res.json();
+
+            // 🚨 IF BANNED: TRIGGER THE POPUP
+            if (data.isBanned) {
+                showBanModal(data.banReason || "Violation of Terms of Service");
+            }
+
+            // OPTIONAL: Update Trust Score Live
+            // updateTrustScoreUI(data.trustScore);
+
+        } catch (err) {
+            console.error("Security Check Failed", err);
+        }
+    }
+
+    let isBanSequenceStarted = false;
+
+    function showBanModal(reason) {
+        if(isBanSequenceStarted) return; // Don't trigger twice
+        isBanSequenceStarted = true;
+
+        // 1. Show the scary modal
+        const modal = document.getElementById('banModal');
+        const reasonText = document.getElementById('banReasonText');
+        const countdownSpan = document.getElementById('banCountdown');
+
+        reasonText.innerText = reason;
+        modal.style.display = "flex"; // Flex centers it
+
+        // 2. Start the Countdown (5..4..3..)
+        let seconds = 5;
+        const interval = setInterval(() => {
+            seconds--;
+            countdownSpan.innerText = seconds;
+
+            if (seconds <= 0) {
+                clearInterval(interval);
+                // 3. The Final Kick
+                localStorage.removeItem('token');
+                window.location.href = 'login.html?reason=banned';
+            }
+        }, 1000);
     }
 
     // Initial Load

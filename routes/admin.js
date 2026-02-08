@@ -51,21 +51,50 @@ router.post('/ban/:id', [auth, admin], async (req, res) => {
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ msg: 'User not found' });
 
-        // Toggle Ban Status
-        user.isBanned = !user.isBanned;
-
-        // If banning, set a reason
+        // --- 1. UNBANNING LOGIC (If they are already banned) ---
         if (user.isBanned) {
-            user.banExpires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 Year Ban
-            addLog('BAN', `ADMIN BANNED User ${user.username} (Score: ${user.trustScore})`);
-        } else {
+            // OPTIONAL: Prevent unban if score is CRITICAL (< 20)
+            if (user.trustScore < 20) {
+                return res.status(400).json({
+                    msg: "❌ Cannot Unfreeze: User Trust Score is Critical (< 20). System requires score recovery first."
+                });
+            }
+
+            user.isBanned = false;
             user.banExpires = null;
-            addLog('ADMIN', `ADMIN UNBANNED User ${user.username}`);
+            user.banReason = null; // Clear reason
+            await user.save();
+
+            addLog('ADMIN', `ADMIN UNBANNED User ${user.username}. Score: ${user.trustScore}`);
+            return res.json({ msg: "User Unfrozen", user });
         }
 
+        // --- 2. BANNING LOGIC (If they are active) ---
+
+        // RESTRICTION: Cannot ban "Good Citizens" (Score > 80)
+        // This prevents admin abuse or accidental clicks.
+        if (user.trustScore > 80) {
+            return res.status(400).json({
+                msg: "❌ Action Denied: User has High Trust Score (> 80). No suspicious activity detected."
+            });
+        }
+
+        // Apply Ban
+        user.isBanned = true;
+        user.banExpires = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes
+
+        // We auto-generate the reason based on their stats so the user knows WHY.
+        let reason = "Violation of Terms.";
+        if (user.rapidUploadSpamCount > 5) reason = "Excessive Spamming / Rapid Uploads.";
+        if (user.trustScore < 50) reason = "Critical Trust Score Drop due to suspicious patterns.";
+
+        user.banReason = reason;
+
         await user.save();
-        res.json(user); // Send back updated user
+        addLog('BAN', `ADMIN BANNED User ${user.username}. Reason: ${reason}`);
+        res.json({ msg: "User Frozen", user });
     } catch (err) {
+        console.error(err);
         res.status(500).send('Server Error');
     }
 });

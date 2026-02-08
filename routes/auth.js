@@ -137,4 +137,21 @@ router.post('/log-ui', auth, (req, res) => {
     res.sendStatus(200);
 });
 
+// GET /api/auth/status
+// Lightweight check for polling
+router.get('/status', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('isBanned banReason trustScore');
+        if (!user) return res.status(404).json({ msg: 'User not found' });
+
+        res.json({
+            isBanned: user.isBanned,
+            banReason: user.banReason,
+            trustScore: user.trustScore
+        });
+    } catch (err) {
+        res.status(500).send('Server Error');
+    }
+});
+
 module.exports = router;
