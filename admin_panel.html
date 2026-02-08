@@ -500,7 +500,7 @@
                 else if (user.trustScore < 80) scoreColor = 'score-low'; // Orange
 
                 // Freeze Button Text
-                const banBtnText = user.isBanned ? "🔥 Unfreeze" : "❄️ Freeze";
+                const banBtnText = user.isBanned ? "Unfreeze" : "Freeze";
                 const banBtnClass = user.isBanned ? "btn-unban" : "btn-freeze"; // You can add css for btn-unban if u want
 
                 const row = `
@@ -512,7 +512,7 @@
                     <td><span class="score-indicator ${scoreColor}">${user.trustScore}</span></td>
                     <td>
                         <button onclick="toggleBan('${user._id}')" class="btn-action ${banBtnClass}">${banBtnText}</button>
-                        <button onclick="filterLogs('${user._id}')" class="btn-action">👁️ Logs</button>
+                        <button onclick="filterLogs('${user._id}')" class="btn-action">Logs</button>
                     </td>
                 </tr>
                 `;
@@ -588,7 +588,7 @@
     // Update every 1 second for that "Matrix" feel
     setInterval(fetchLogs, 1000);
     fetchLogs(); // Run immediately on load
-    setInterval(updateWatchlist, 1000);
+    setInterval(updateWatchlist, 5000);
     updateWatchlist();
 
     function logout() {

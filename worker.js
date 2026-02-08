@@ -99,8 +99,10 @@ complianceQueue.process(async (job) => {
 
             py.stdout.on('data', (data) => output += data.toString());
             py.stderr.on('data', (data) => {
-                errorLog += data.toString();
-                // console.log(`[Python Log] ${data}`); // Optional: Uncomment for noisy logs
+                const msg = data.toString().trim();
+                errorLog += msg + '\n';
+                // Print Python logs in REAL-TIME so you can see what's happening
+                console.log(`🐍 [PYTHON] ${msg}`);
             });
 
             py.on('close', (code) => {
@@ -209,11 +211,11 @@ complianceQueue.process(async (job) => {
         await File.findByIdAndUpdate(fileId, { complianceStatus: 'failed' });
     } finally {
         // Cleanup
-        if (fs.existsSync(path.join(__dirname, 'temp', `in_${job.id}.pdf`))) {
-            fs.unlinkSync(path.join(__dirname, 'temp', `in_${job.id}.pdf`));
-        }
-        if (fs.existsSync(path.join(__dirname, 'temp', `out_${job.id}.pdf`))) {
-            fs.unlinkSync(path.join(__dirname, 'temp', `out_${job.id}.pdf`));
-        }
+        //if (fs.existsSync(path.join(__dirname, 'temp', `in_${job.id}.pdf`))) {
+        //    fs.unlinkSync(path.join(__dirname, 'temp', `in_${job.id}.pdf`));
+        //}
+        //if (fs.existsSync(path.join(__dirname, 'temp', `out_${job.id}.pdf`))) {
+        //    fs.unlinkSync(path.join(__dirname, 'temp', `out_${job.id}.pdf`));
+        //}
     }
 });
