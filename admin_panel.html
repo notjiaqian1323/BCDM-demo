@@ -185,30 +185,7 @@
                     <th>Actions</th>
                 </tr>
                 </thead>
-                <tbody>
-                <tr>
-                    <td>unsafe_user<br><small class="text-secondary">ID: 6971...</small></td>
-                    <td><span class="score-indicator score-critical">45</span></td>
-                    <td>
-                        <button class="btn-action btn-freeze">❄️ Freeze</button>
-                        <button class="btn-action">👁️ Logs</button>
-                    </td>
-                </tr>
-                <tr>
-                    <td>spammer_X</td>
-                    <td><span class="score-indicator score-low">58</span></td>
-                    <td>
-                        <button class="btn-action btn-freeze">❄️ Freeze</button>
-                        <button class="btn-action">👁️ Logs</button>
-                    </td>
-                </tr>
-                <tr>
-                    <td>another_risk</td>
-                    <td><span class="score-indicator score-low">62</span></td>
-                    <td>
-                        <button class="btn-action">👁️ Logs</button>
-                    </td>
-                </tr>
+                <tbody id="watchlistBody">
                 </tbody>
             </table>
         </div>
@@ -289,10 +266,114 @@
         }
     }
 
+    // --- 1. FETCH & RENDER WATCHLIST ---
+    async function updateWatchlist() {
+        try {
+            const res = await fetch('http://localhost:5000/api/admin/risky', {
+                headers: { 'x-auth-token': localStorage.getItem('token') }
+            });
+            const users = await res.json();
+
+            const tbody = document.getElementById('watchlistBody');
+            tbody.innerHTML = ''; // Clear old data
+
+            users.forEach(user => {
+                // Determine Row Color based on Score
+                let scoreColor = 'score-high'; // Green
+                if (user.trustScore < 50) scoreColor = 'score-critical'; // Red
+                else if (user.trustScore < 80) scoreColor = 'score-low'; // Orange
+
+                // Freeze Button Text
+                const banBtnText = user.isBanned ? "🔥 Unfreeze" : "❄️ Freeze";
+                const banBtnClass = user.isBanned ? "btn-unban" : "btn-freeze"; // You can add css for btn-unban if u want
+
+                const row = `
+                <tr>
+                    <td>
+                        <div style="font-weight:bold;">${user.username}</div>
+                        <small class="text-secondary">ID: ${user._id.substring(0, 8)}...</small>
+                    </td>
+                    <td><span class="score-indicator ${scoreColor}">${user.trustScore}</span></td>
+                    <td>
+                        <button onclick="toggleBan('${user._id}')" class="btn-action ${banBtnClass}">${banBtnText}</button>
+                        <button onclick="filterLogs('${user._id}')" class="btn-action">👁️ Logs</button>
+                    </td>
+                </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+
+        } catch (err) {
+            console.error("Error loading watchlist", err);
+        }
+    }
+
+    // --- 2. FREEZE (BAN) ACTION ---
+    async function toggleBan(userId) {
+        if(!confirm("Are you sure you want to Freeze/Unfreeze this user?")) return;
+
+        try {
+            const res = await fetch(`http://localhost:5000/api/admin/ban/${userId}`, {
+                method: 'POST',
+                headers: { 'x-auth-token': localStorage.getItem('token') }
+            });
+
+            if(res.ok) {
+                // Refresh both the list and the logs to show the "BAN" event
+                await updateWatchlist();
+                await fetchLogs();
+            }
+        } catch (err) {
+            alert("Failed to change ban status");
+        }
+    }
+
+    // --- 3. FILTER LOGS ACTION ---
+    async function filterLogs(userId) {
+        // Change the header to show we are in "Filter Mode"
+        const feedContainer = document.getElementById('liveFeed');
+        feedContainer.innerHTML = '<div style="text-align:center; padding:20px;">🔍 Searching User Logs...</div>';
+
+        try {
+            const res = await fetch(`http://localhost:5000/api/admin/logs/${userId}`, {
+                headers: { 'x-auth-token': localStorage.getItem('token') }
+            });
+            const logs = await res.json();
+
+            // Render ONLY these logs
+            if (logs.length === 0) {
+                feedContainer.innerHTML = '<div style="text-align:center; padding:20px;">No logs found for this user.</div>';
+                return;
+            }
+
+            const html = logs.map(log => {
+                const colorClass = getLogColor(log.type);
+                return `
+                <div class="log-entry">
+                    <span class="log-time">[${log.timestamp}]</span>
+                    <span class="log-type ${colorClass}">${log.type}</span>
+                    <span class="log-detail">${log.message}</span>
+                </div>`;
+            }).join('');
+
+            feedContainer.innerHTML = html;
+
+            // Stop the auto-refresh so the admin can read without it jumping
+            // (We assume you have a setInterval variable named 'logInterval')
+            // clearInterval(logInterval);
+            // alert("Live feed paused for investigation. Refresh page to resume.");
+
+        } catch (err) {
+            console.error("Error filtering logs", err);
+        }
+    }
+
     // 🚀 3. Start the Engine
     // Update every 1 second for that "Matrix" feel
     setInterval(fetchLogs, 1000);
     fetchLogs(); // Run immediately on load
+    setInterval(updateWatchlist, 1000);
+    updateWatchlist();
 
     function logout() {
         localStorage.removeItem('token');
