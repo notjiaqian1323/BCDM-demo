@@ -41,6 +41,12 @@ except Exception as e:
 # 🎯 TARGET LABELS (Removed 'person' and 'address' to reduce noise)
 LABELS = ["nric number", "passport number", "phone number", "email address", "credit card number"]
 
+# These words trigger a "High Sensitivity" warning
+RISK_KEYWORDS = {
+    "HIGH": ["STRICTLY CONFIDENTIAL", "TOP SECRET", "NON-DISCLOSURE AGREEMENT", "NDA", "DO NOT DISTRIBUTE"],
+    "MEDIUM": ["INTERNAL USE ONLY", "PRIVATE", "DRAFT", "RESTRICTED"],
+}
+
 # --- 2. CLEANER ---
 def clean_text_minimal(text):
     text = re.sub(r'\[\d+\]', ' ', text)
@@ -51,22 +57,43 @@ def clean_text_minimal(text):
 
 # --- 2. REGEX PATTERNS (The "Hard" Check) ---
 REGEX_PATTERNS = {
-    # Malaysia NRIC: YYMMDD-PB-#### (with or without hyphens)
+    # Malaysia NRIC: 12 digits, optional hyphens
     "NRIC_REGEX": r"\b\d{6}-?\d{2}-?\d{4}\b",
+    "EMAIL_REGEX": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+    "PHONE_REGEX": r"\b(?:01[0-46-9]-?\d{7,8}|011-?\d{8})\b",
 
     # Credit Card: 13-19 digits, often grouped
     "CC_REGEX": r"\b(?:\d{4}[-\s]?){3}\d{4}\b",
-
-    # Email: Standard format
-    "EMAIL_REGEX": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-
-    # Phone: Malaysia Mobile (+60 or 01)
-    "PHONE_REGEX": r"\b(?:01[0-46-9]-?\d{7,8}|011-?\d{8})\b"
 }
+
+def calculate_risk_score(pii_count, found_keywords):
+    # Base Score (Perfectly Safe)
+    score = 100
+    classification = "PUBLIC"
+
+    # 1. Penalty for PII
+    if pii_count > 0:
+        score -= (pii_count * 10) # -10 points per PII
+        classification = "SENSITIVE"
+
+    # 2. Penalty for Keywords
+    for kw in found_keywords:
+        if kw in RISK_KEYWORDS["HIGH"]:
+            score -= 30
+            classification = "RESTRICTED"
+        elif kw in RISK_KEYWORDS["MEDIUM"]:
+            score -= 15
+            if classification != "RESTRICTED": classification = "INTERNAL"
+
+    # Cap the score (0 to 100)
+    return max(0, score), classification
 
 def process_pdf(input_path, output_path):
     doc = fitz.open(input_path)
     final_findings = []
+
+    # Track unique findings to prevent duplicates
+    found_texts = set()
 
     for page_num, page in enumerate(doc):
         # 1. Get Text
@@ -77,6 +104,19 @@ def process_pdf(input_path, output_path):
         for label, pattern in REGEX_PATTERNS.items():
             matches = re.findall(pattern, text)
             for match in matches:
+                if match in found_texts: continue # Skip duplicates
+
+                # Validation: NRIC must be 12 digits (excluding hyphens)
+                if "NRIC" in label:
+                    digits = re.sub(r'\D', '', match)
+                    if len(digits) != 12: continue
+
+                # Highlight & Record
+                hit_list = page.search_for(match)
+                for rect in hit_list:
+                    annot = page.add_redact_annot(rect)
+                    annot.update()
+
                 # Add to findings
                 final_findings.append({
                     "text": match,
@@ -85,33 +125,46 @@ def process_pdf(input_path, output_path):
                     "score": 1.0 # Regex is 100% confident
                 })
 
-                # Highlight immediately
-                hit_list = page.search_for(match)
-                for rect in hit_list:
-                    annot = page.add_redact_annot(rect) # REDACT (Black Box)
-                    annot.update()
+                found_texts.add(match)
 
         # --- B. AI SCANNING (Contextual) ---
         # Split into chunks for GLiNER
-        chunks = [line for line in text.split('\n') if len(line.strip()) > 15]
+        chunks = [line for line in text.split('\n') if len(line.strip()) > 20]
 
         for chunk in chunks:
             clean_chunk = clean_text_minimal(chunk)
 
             # Predict
-            entities = model.predict_entities(clean_chunk, LABELS, threshold=0.5) # Higher threshold
+            entities = model.predict_entities(clean_chunk, LABELS, threshold=0.85) # Higher threshold
 
             for ent in entities:
                 text_found = ent["text"]
                 label_found = ent["label"]
                 score = ent["score"]
 
-                # SKIP LOGIC (Reduce False Positives)
-                # 1. If it's just 4 digits (e.g., Year "2022"), ignore it
-                if label_found == "nric number" and len(text_found) < 6: continue
+                # 1. Reject if already found by Regex
+                if text_found in found_texts: continue
 
-                # 2. If score is weak
-                if score < 0.60: continue
+                # 2. Reject Academic Junk (DOI, ISSN, Volume)
+                upper_text = text_found.upper()
+                if "DOI" in upper_text or "ISSN" in upper_text or "VOL" in upper_text: continue
+                if text_found.startswith("10."): continue # DOIs start with 10.
+
+                # 3. Strict NRIC Check
+                if label_found == "nric number":
+                    # Must have at least 10 numbers
+                    digit_count = sum(c.isdigit() for c in text_found)
+                    if digit_count < 10: continue
+                    # Must NOT have dots (like 10.1108)
+                    if "." in text_found: continue
+
+                # 4. Strict Email Check
+                if "email" in label_found and "@" not in text_found: continue
+
+                # 5. Strict Phone Check
+                if "phone" in label_found:
+                    digit_count = sum(c.isdigit() for c in text_found)
+                    if digit_count < 9: continue # Too short to be a phone number
 
                 # Check if we already found this via Regex (Optimization)
                 # (Simple check to avoid double-boxing)
@@ -132,6 +185,7 @@ def process_pdf(input_path, output_path):
                         "page": page_num + 1,
                         "score": round(score, 2)
                     })
+                    found_texts.add(text_found)
 
         # Apply all redactions for this page (Burns the black boxes in)
         page.apply_redactions()

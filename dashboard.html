@@ -296,11 +296,19 @@
             const res = await fetch(`${API_URL}/storage/status/${fileId}`, { headers: authHeaders });
             const data = await res.json();
 
+            // 🛑 DEBUG: Check what the server actually sent
+            console.log("🔍 Server Response:", data);
+            console.log("📊 PII Report Data:", data.piiReport);
+
+            // Check for 'report' OR 'piiReport' to be safe
+            const reportData = data.report || data.piiReport;
+            console.log("📊 PII Report Data:", reportData);
+
             // 🛑 CASE 1: THREATS FOUND
-            if (data.piiReport && data.piiReport.length > 0) {
+            if (reportData && reportData.length > 0) {
 
                 // Build Rows
-                const rows = data.piiReport.map(item => {
+                const rows = reportData.map(item => {
                     // Color Code the Badges
                     let badgeColor = '#3b82f6'; // Blue (Email)
                     if(item.type.includes('NRIC') || item.type.includes('CREDIT')) badgeColor = '#ef4444'; // Red (High Risk)
@@ -332,7 +340,7 @@
                 <div style="background:#0f172a; border-radius:8px; overflow:hidden; border:1px solid #334155;">
                     <div style="padding:15px; background:#1e293b; border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center;">
                         <span style="color:#ef4444; font-weight:bold;">🚨 VIOLATIONS DETECTED</span>
-                        <span style="background:#ef4444; color:white; padding:2px 8px; border-radius:10px; font-size:0.8rem;">${data.piiReport.length}</span>
+                        <span style="background:#ef4444; color:white; padding:2px 8px; border-radius:10px; font-size:0.8rem;">${reportData.length}</span>
                     </div>
 
                     <div style="max-height:400px; overflow-y:auto;">

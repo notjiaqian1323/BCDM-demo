@@ -120,4 +120,27 @@ router.get('/logs/:id', [auth, admin], async (req, res) => {
     }
 });
 
+// GET /api/admin/stats
+// Returns the HUD counts
+router.get('/stats', [auth, admin], async (req, res) => {
+    try {
+        // 1. Count Total Users
+        const totalUsers = await User.countDocuments({});
+
+        // 2. Count At-Risk Users (Trust Score < 50)
+        const atRiskUsers = await User.countDocuments({ trustScore: { $lt: 50 } });
+
+        // 3. Return Data
+        res.json({
+            status: 'OPERATIONAL', // You can make this dynamic later based on DB connection
+            total: totalUsers,
+            risk: atRiskUsers
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
 module.exports = router;

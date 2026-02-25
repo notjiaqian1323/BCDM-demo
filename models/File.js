@@ -25,8 +25,24 @@ const FileSchema = new mongoose.Schema({
         default: 'pending'
     },
 
+    riskScore: { type: Number, default: 100 },
+    classification: {
+        type: String,
+        enum: ['PUBLIC', 'SENSITIVE', 'INTERNAL', 'RESTRICTED', 'UNKNOWN'],
+        default: 'UNKNOWN'
+    },
+    riskKeywords: [String], // To store "CONFIDENTIAL", "NDA"
+    rejectionReason: { type: String, default: '' }, // To show user why it was deleted
+
     // The JSON report from GLiNER (e.g., found "John Doe" on page 1)
-    piiReport: { type: Object, default: {} }
+    piiReport: [
+        {
+            text: String,
+            type: { type: String }, // e.g. "NRIC NUMBER"
+            page: Number,
+            score: Number
+        }
+    ],
 });
 
 module.exports = mongoose.model('File', FileSchema);

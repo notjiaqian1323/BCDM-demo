@@ -118,9 +118,18 @@ complianceQueue.process(async (job) => {
 
         // 5. PARSE RESULTS
         let report = [];
+        let riskMeta = { risk_score: 100, classification: "PUBLIC", keywords_found: [] };
+
         try {
-            report = JSON.parse(jsonResult);
-            logWorker(`Job ${job.id}: NLP Report parsed`, { findings: report.length });
+            const parsed = JSON.parse(jsonResult);
+            // Check if it's the new format with 'meta'
+            if (parsed.findings) {
+                report = parsed.findings;
+                riskMeta = parsed.meta;
+            } else {
+                report = parsed; // Fallback for old format
+            }
+            logWorker(`Job ${job.id}: NLP Report parsed`, { findings: report.length, class: riskMeta.classification });
         } catch (e) {
             logError(`Job ${job.id}: Failed to parse JSON`, jsonResult);
             report = [];
@@ -131,8 +140,9 @@ complianceQueue.process(async (job) => {
         const user = await User.findById(userId);
 
         if (user) {
-            if (violations > 0) {
-                const penalty = Math.min(violations * 5, 20);
+            if (riskMeta.classification === 'INTERNAL' || riskMeta.classification === 'RESTRICTED') {
+
+                const penalty = 20; // Heavy penalty
                 user.trustScore = Math.max(0, user.trustScore - penalty);
                 user.violationCount += 1;
 
