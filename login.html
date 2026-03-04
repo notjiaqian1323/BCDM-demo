@@ -3,106 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BCDS Secure Login</title>
+    <title>BCDS Secure Cloud - Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #2c3e50; margin: 0; }
-        .container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 350px; text-align: center; }
-        h1 { color: #333; margin-bottom: 20px; }
-        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; font-weight: bold; margin-top: 10px; transition: 0.3s; }
-        .btn-primary { background: #3498db; color: white; }
-        .btn-primary:hover { background: #2980b9; }
-        .switch-text { margin-top: 15px; font-size: 0.9rem; color: #666; cursor: pointer; text-decoration: underline; }
-        .error { color: #e74c3c; margin-top: 10px; font-size: 0.9rem; display: none; }
+        :root {
+            --primary: #4f46e5; --primary-hover: #4338ca;
+            --bg-color: #f8fafc; --card-bg: #ffffff;
+            --text-main: #334155; --text-muted: #64748b;
+            --border: #e2e8f0; --danger: #ef4444;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { display: flex; height: 100vh; background-color: var(--bg-color); align-items: center; justify-content: center; }
+
+        .auth-container { width: 100%; max-width: 400px; background: var(--card-bg); padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid var(--border); }
+        .auth-header { text-align: center; margin-bottom: 30px; }
+        .auth-header i { font-size: 3rem; color: var(--primary); margin-bottom: 15px; }
+        .auth-header h1 { font-size: 1.5rem; color: #0f172a; }
+
+        .toggle-btns { display: flex; background: #f1f5f9; border-radius: 8px; padding: 5px; margin-bottom: 25px; }
+        .toggle-btn { flex: 1; text-align: center; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--text-muted); transition: 0.2s; }
+        .toggle-btn.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-main); margin-bottom: 5px; }
+        .form-group input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; outline: none; transition: 0.2s; background: #f8fafc; }
+        .form-group input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); background: white; }
+
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 6px; background: var(--primary); color: white; font-weight: 600; font-size: 1rem; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+        .btn:hover { background: var(--primary-hover); }
+
+        .error-msg { color: var(--danger); font-size: 0.85rem; text-align: center; margin-top: 15px; min-height: 20px; font-weight: 500; }
+
+        #register-form { display: none; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h1 id="title">🔐 Login</h1>
-        <form id="authForm">
-            <input type="text" id="username" placeholder="Username" style="display:none;">
-            <input type="email" id="email" placeholder="Email Address" required>
-            <input type="password" id="password" placeholder="Password" required>
-            <button type="submit" class="btn-primary" id="submitBtn">Sign In</button>
+    <div class="auth-container">
+        <div class="auth-header">
+            <i class="fa-solid fa-shield-halved"></i>
+            <h1>BCDS Secure Cloud</h1>
+        </div>
+
+        <div class="toggle-btns">
+            <div class="toggle-btn active" onclick="switchForm('login')" id="btn-login">Sign In</div>
+            <div class="toggle-btn" onclick="switchForm('register')" id="btn-register">Create Account</div>
+        </div>
+
+        <form id="login-form" onsubmit="handleAuth(event, 'login')">
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" id="login-email" required placeholder="name@example.com">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="login-password" required placeholder="••••••••">
+            </div>
+            <button type="submit" class="btn" id="login-submit">Secure Sign In</button>
         </form>
-        <p class="error" id="errorMsg"></p>
-        <p class="switch-text" onclick="toggleMode()" id="switchBtn">Need an account? Register</p>
+
+        <form id="register-form" onsubmit="handleAuth(event, 'register')">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="reg-username" placeholder="John Doe">
+            </div>
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" id="reg-email" placeholder="name@example.com">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="reg-password" placeholder="Create a strong password">
+            </div>
+            <button type="submit" class="btn" id="reg-submit">Create Account</button>
+        </form>
+
+        <div id="error-message" class="error-msg"></div>
     </div>
 
     <script>
-        let isRegister = false;
+        // Redirect if already logged in
+        if (localStorage.getItem('token')) {
+            window.location.href = 'dashboard.html';
+        }
 
-        function toggleMode() {
-            isRegister = !isRegister;
-            const title = document.getElementById('title');
-            const submitBtn = document.getElementById('submitBtn');
-            const switchBtn = document.getElementById('switchBtn');
-            const userInput = document.getElementById('username');
-
-            if (isRegister) {
-                title.innerText = "📝 Register";
-                submitBtn.innerText = "Create Account";
-                switchBtn.innerText = "Have an account? Login";
-                userInput.style.display = 'block';
-                userInput.required = true;
+        function switchForm(form) {
+            document.getElementById('error-message').innerText = '';
+            if (form === 'login') {
+                document.getElementById('login-form').style.display = 'block';
+                document.getElementById('register-form').style.display = 'none';
+                document.getElementById('btn-login').classList.add('active');
+                document.getElementById('btn-register').classList.remove('active');
             } else {
-                title.innerText = "🔐 Login";
-                submitBtn.innerText = "Sign In";
-                switchBtn.innerText = "Need an account? Register";
-                userInput.style.display = 'none';
-                userInput.required = false;
+                document.getElementById('login-form').style.display = 'none';
+                document.getElementById('register-form').style.display = 'block';
+                document.getElementById('btn-login').classList.remove('active');
+                document.getElementById('btn-register').classList.add('active');
             }
         }
 
-        document.getElementById('authForm').addEventListener('submit', async (e) => {
+        async function handleAuth(e, type) {
             e.preventDefault();
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const username = document.getElementById('username').value;
-            const errorMsg = document.getElementById('errorMsg');
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.innerText = '';
+            
+            const submitBtn = type === 'login' ? document.getElementById('login-submit') : document.getElementById('reg-submit');
+            const originalText = submitBtn.innerText;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+            submitBtn.disabled = true;
 
-            const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-            const body = isRegister ? { username, email, password } : { email, password };
+            const endpoint = type === 'login' ? '/api/auth/login' : '/api/auth/register';
+            
+            const payload = type === 'login' 
+                ? { email: document.getElementById('login-email').value, password: document.getElementById('login-password').value }
+                : { username: document.getElementById('reg-username').value, email: document.getElementById('reg-email').value, password: document.getElementById('reg-password').value };
 
             try {
-                console.log("🔵 Attempting login...", body); // Debug Log 1
-
-                const res = await fetch(`http://localhost:5000${endpoint}`, {
+                const res = await fetch(`http://127.0.0.1:5001${endpoint}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
+                    body: JSON.stringify(payload)
                 });
-                
+
                 const data = await res.json();
-                console.log("🟢 Server Response:", data); // Debug Log 2
 
                 if (res.ok) {
+                    // Save token and redirect
                     localStorage.setItem('token', data.token);
-
-                    // Optional Chaining (?.) prevents crash if 'user' is missing
-                    const userRole = data.user?.role || data.role;
-
-                    // --- 🚦 ENTERPRISE REDIRECT LOGIC ---
-                    if (userRole === 'admin') {
-                        // If Admin -> Go to the Command Center
-                        console.log("🎩 Welcome Admin. Redirecting to Admin Panel...");
-                        window.location.href = 'admin_panel.html';
-                    } else {
-                        // If User -> Go to Personal Dashboard
-                        console.log("👤 Welcome User. Redirecting to Dashboard...");
-                        window.location.href = 'dashboard.html';
-                    }
-
+                    window.location.href = 'dashboard.html';
                 } else {
-                    errorMsg.style.display = 'block';
-                    errorMsg.innerText = data.msg || 'Error occurred';
+                    errorDiv.innerText = data.msg || 'Authentication failed';
+                    submitBtn.innerHTML = originalText;
+                    submitBtn.disabled = false;
                 }
             } catch (err) {
-                errorMsg.style.display = 'block';
-                errorMsg.innerText = "Server Error";
+                errorDiv.innerText = 'Network error. Is your server running?';
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
             }
-        });
+        }
     </script>
 </body>
 </html>
