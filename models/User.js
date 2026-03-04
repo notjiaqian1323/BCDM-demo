@@ -12,6 +12,23 @@ const UserSchema = new mongoose.Schema({
     storageUsed:  { type: Number, default: 0 },
     date:     { type: Date, default: Date.now },
 
+    // Dates
+    subscriptionStart: { type: Date, default: Date.now },
+    subscriptionEnd: { type: Date, default: null }, // Null means forever (Basic)
+
+    // Team Sharing Features
+    sharedUsers: { type: Array, default: [] }, // Array of emails they shared storage with
+    maxSharedLimit: { type: Number, default: 0 }, // 0 for Basic, 10 Premium, 100 Ent.
+
+    workspacesJoined: [{ type: mongoose.Schema.Types.ObjectId, ref: 'user' }],
+
+    // Workspace Creation Tracking
+    workspacesCreated: [{
+        name: { type: String, required: true },
+        allocatedBytes: { type: Number, required: true },
+        createdAt: { type: Date, default: Date.now }
+    }],
+
     // --- NEW: ROLE MANAGEMENT ---
     role: {
         type: String,

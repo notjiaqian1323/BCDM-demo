@@ -2,18 +2,18 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 
-// --- 1. UPGRADED BLOCK CLASS (Generic Data) ---
 class Block {
-    constructor(index, timestamp, data, prevHash = "") {
+    constructor(index, timestamp, fileId, fileHash, prevHash = "") {
         this.index = index;
         this.timestamp = timestamp;
-        this.data = data; // Now stores an Object (File info OR Reputation info)
+        this.fileId = fileId;
+        this.fileHash = fileHash;
         this.prevHash = prevHash;
         this.hash = this.calculateHash();
     }
     calculateHash() {
         return crypto.createHash('sha256')
-            .update(this.index + this.prevHash + this.timestamp + JSON.stringify(this.data))
+            .update(this.index + this.prevHash + this.timestamp + JSON.stringify(this.fileHash))
             .digest('hex');
     }
 }
@@ -23,7 +23,7 @@ class Blockchain {
         this.chain = [this.createGenesisBlock()];
     }
     createGenesisBlock() {
-        return new Block(0, new Date().toISOString(), { info: "GENESIS_BLOCK" }, "0");
+        return new Block(0, new Date().toISOString(), "0", "GENESIS_BLOCK", "0");
     }
     getLatestBlock() {
         return this.chain[this.chain.length - 1];
@@ -37,30 +37,34 @@ class Blockchain {
 
 const myChain = new Blockchain();
 
-// --- 2. GENERAL LOGGING ROUTE ---
-// Accepts ANY event data: Files, Penalties, Bans
+// @route   POST /api/blockchain/log
 router.post('/log', (req, res) => {
-    const { type, details } = req.body;
+    const { fileId } = req.body;
 
-    // Example Input:
-    // {
-    //   type: "REPUTATION_PENALTY",
-    //   details: { userId: "123", penalty: -10, reason: "PII Detected" }
-    // }
+    // --- PREVENT DUPLICATE MINING ---
+    const blockExists = myChain.chain.some(block => block.fileId === fileId);
+    if (blockExists) {
+        return res.status(400).json({
+            message: "File ID already exists in the Blockchain Ledger",
+            status: "DUPLICATE_REJECTED"
+        });
+    }
 
     // --- MINE BLOCK ---
+    const fileHash = crypto.createHash('sha256').update(fileId).digest('hex');
     const newBlock = new Block(
         myChain.chain.length,
         new Date().toISOString(),
-        { type, ...details } // Store type + details together
+        fileId,
+        fileHash
     );
 
     myChain.addBlock(newBlock);
 
     res.json({
-        message: "Event logged to Ledger",
+        message: "File successfully logged to Blockchain Ledger",
         blockIndex: newBlock.index,
-        blockHash: newBlock.hash,
+        fileHash: newBlock.fileHash,
         status: "IMMUTABLE"
     });
 });

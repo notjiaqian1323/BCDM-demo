@@ -1,419 +1,232 @@
-// routes/storage.js
 const express = require('express');
-const mongoose = require('mongoose');
 const router = express.Router();
+const auth = require('../middleware/auth');
+const User = require('../models/User');
+const File = require('../models/File');
+const Activity = require('../models/Activity');
 const multer = require('multer');
 const AWS = require('aws-sdk');
-const crypto = require('crypto');
-const File = require('../models/File');
-const User = require('../models/User');
-const { encryptBuffer, decryptBuffer } = require('../utils/encryption');
-const auth = require('../middleware/auth');
-const Queue = require('bull');
-const axios = require('axios');
-const { addLog } = require('../utils/logger');
-
-// --- CONFIGURATION ---
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
-const complianceQueue = new Queue('compliance-scanning', 'redis://127.0.0.1:6379');
 
 const s3 = new AWS.S3({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    sessionToken: process.env.AWS_SESSION_TOKEN,
     region: process.env.AWS_REGION
 });
+const upload = multer({ storage: multer.memoryStorage() });
 
-// --- HELPER FOR CONSISTENT LOGGING ---
-const logEvent = (route, msg, data = {}) => {
-    console.log(`[${new Date().toISOString()}] ℹ️  [${route}] ${msg}`, JSON.stringify(data));
-};
+// --- HELPER FUNCTION LOGS ---
+async function getTargetDrive(req) {
+    const driveId = req.query.drive || 'personal';
+    console.log(`🔍 [STORAGE API] getTargetDrive: Resolving drive access for ID: ${driveId}`);
 
-const logError = (route, msg, error) => {
-    console.error(`[${new Date().toISOString()}] ❌ [${route}] ${msg}`, error.message || error);
-};
+    const requestingUser = await User.findById(req.user.id);
+    if (!requestingUser) {
+        console.error(`❌ [STORAGE API] getTargetDrive: Requesting user (ID: ${req.user.id}) not found in DB!`);
+        throw { status: 404, msg: "User not found." };
+    }
 
-// =========================================================================
-// 1. UPLOAD ROUTE (The Critical Path)
-// =========================================================================
+    if (driveId === 'personal') {
+        console.log(`✅ [STORAGE API] getTargetDrive: Access granted to Personal Drive.`);
+        return requestingUser;
+    }
+
+    console.log(`[STORAGE API] getTargetDrive: Checking if user owns workspace ${driveId}...`);
+    const owned = requestingUser.workspacesCreated ? requestingUser.workspacesCreated.id(driveId) : null;
+    if (owned) {
+        console.log(`✅ [STORAGE API] getTargetDrive: Access granted. User is the owner of workspace.`);
+        return requestingUser;
+    }
+
+    console.log(`[STORAGE API] getTargetDrive: Checking if user is joined to workspace ${driveId}...`);
+    const isJoined = requestingUser.workspacesJoined ? requestingUser.workspacesJoined.includes(driveId) : false;
+    if (isJoined) {
+        console.log(`[STORAGE API] getTargetDrive: User is a guest. Locating workspace owner...`);
+        const owner = await User.findOne({ "workspacesCreated._id": driveId });
+        if (!owner) {
+            console.error(`❌ [STORAGE API] getTargetDrive: Workspace ${driveId} exists in user's joined list, but the owner cannot be found in the DB!`);
+            throw { status: 404, msg: "Workspace no longer exists." };
+        }
+        console.log(`✅ [STORAGE API] getTargetDrive: Access granted. Guest accessing owner's storage.`);
+        return owner;
+    }
+
+    console.error(`🚫 [STORAGE API] getTargetDrive: UNAUTHORIZED. User is neither owner nor guest.`);
+    throw { status: 403, msg: "Unauthorized: You do not have access to this folder." };
+}
+
+// ==========================================
+// ROUTES
+// ==========================================
+
 router.post('/upload', [auth, upload.single('file')], async (req, res) => {
-    const ROUTE = 'POST /upload';
-    logEvent(ROUTE, 'Request received');
+    console.log(`\n📤 [STORAGE API] POST /upload started by user ${req.user.id}`);
+    if (!req.file) {
+        console.warn(`⚠️ [STORAGE API] Upload rejected: No file attached to request.`);
+        return res.status(400).json({ msg: "No file provided" });
+    }
+    const driveId = req.query.drive || 'personal';
 
     try {
-        const user = req.user;
-        // 1. GET TOGGLE STATUS (Frontend sends string 'true' or 'false')
-        // Note: Multer parses the text fields along with the file
-        const runCompliance = req.body.runCompliance === 'true';
+        const targetOwner = await getTargetDrive(req);
 
-        logEvent(ROUTE, `User authenticated`, { userId: user.id, username: user.username, runCompliance });
-
-        // 2. Check for File Presence
-        if (!req.file) {
-            logError(ROUTE, 'No file attached');
-            return res.status(400).json({ msg: 'No file uploaded' });
-        }
-        logEvent(ROUTE, `File details received`, {
-            name: req.file.originalname,
-            size: req.file.size,
-            mimetype: req.file.mimetype
-        });
-
-        // 3. Trust Score Check (Global Gatekeeper)
-        // If score is extremely low (< 20), maybe block ALL uploads.
-        // For now, we keep your existing rule: < 50 blocks EVERYTHING.
-        if (user.trustScore < 50) {
-            logError(ROUTE, `Trust score blocked`, { score: user.trustScore, threshold: 50 });
-            addLog('SECURITY', `🚫 BLOCKED UPLOAD: User ${user.username} (Score: ${user.trustScore}) tried to upload.`);
-            return res.status(403).json({
-                msg: "⚠️ Trust Score too low. Upload permission revoked.",
-                currentScore: user.trustScore
-            });
+        console.log(`[STORAGE API] Checking storage limits... Used: ${targetOwner.storageUsed}, Incoming: ${req.file.size}, Limit: ${targetOwner.storageLimit}`);
+        if (targetOwner.storageUsed + req.file.size > targetOwner.storageLimit) {
+            console.warn(`⚠️ [STORAGE API] Upload rejected: Storage limit exceeded.`);
+            return res.status(400).json({ msg: "Upload failed: Not enough storage space." });
         }
 
-        // 4. Rate Limiting
-        const now = Date.now();
-        if (user.lastUploadTime && (now - user.lastUploadTime.getTime()) < 5000) {
-            logEvent(ROUTE, `Rate limit hit. Applying penalty.`, { userId: user.id });
-            addLog('SECURITY', `Rate Limit Triggered by ${user.username}. Penalty applied.`);
+        let folderPath = 'personal';
+        let locationName = "Personal Drive";
 
-            user.trustScore = Math.max(0, user.trustScore - 2);
-            user.rapidUploadSpamCount += 1;
-            user.lastPenaltyDate = Date.now();
-            await user.save();
-
-            logEvent(ROUTE, `Penalty applied`, { newScore: user.trustScore });
-            return res.status(429).json({
-                msg: "🚫 Slow down! You are uploading too fast. Trust score penalized.",
-                currentScore: user.trustScore
-            });
+        if (driveId !== 'personal') {
+            const workspace = targetOwner.workspacesCreated.id(driveId);
+            folderPath = workspace ? workspace.name : 'UnknownWorkspace';
+            locationName = workspace ? `workspace "${workspace.name}"` : "a shared workspace";
         }
 
-        user.lastUploadTime = now;
-        await user.save();
+        const s3Key = `${targetOwner.email}/${folderPath}/${Date.now()}-${req.file.originalname}`;
+        console.log(`[STORAGE API] Uploading to AWS S3... Key: ${s3Key}`);
 
-        // 5. Storage Limit Check
-        const currentUsage = user.storageUsed || 0;
-        if (currentUsage + req.file.size > user.storageLimit) {
-            addLog('WARN', `Storage Quota Exceeded: User ${user.username} failed to upload "${req.file.originalname}".`);
-            logError(ROUTE, `Storage limit exceeded`, { used: currentUsage, incoming: req.file.size, limit: user.storageLimit });
-            return res.status(400).json({ msg: `🚫 Storage Limit Exceeded!` });
-        }
-
-        // 6. Encrypt & Upload to S3
-        logEvent(ROUTE, 'Starting encryption...');
-        const encryptedFileBuffer = encryptBuffer(req.file.buffer);
-
-        logEvent(ROUTE, 'Uploading to AWS S3...');
-        const s3Params = {
+        const s3Result = await s3.upload({
             Bucket: process.env.AWS_BUCKET_NAME,
-            Key: `${user.id}/${Date.now()}_${req.file.originalname}.enc`,
-            Body: encryptedFileBuffer
-        };
-        const s3Data = await s3.upload(s3Params).promise();
-        logEvent(ROUTE, 'S3 Upload successful', { s3Key: s3Data.Key });
+            Key: s3Key,
+            Body: req.file.buffer,
+            ContentType: req.file.mimetype
+        }).promise();
 
-        // 7. Save Metadata to DB (CONDITIONAL STATUS)
-        logEvent(ROUTE, 'Saving file metadata to MongoDB...');
-
-        // If toggle is ON -> 'pending' (Worker will pick it up)
-        // If toggle is OFF -> 'skipped' (Worker ignores it)
-        const initialStatus = runCompliance ? 'pending' : 'skipped';
-
+        console.log(`[STORAGE API] AWS Upload successful. Saving to MongoDB...`);
         const newFile = new File({
-            userId: user.id,
+            owner: targetOwner._id,
+            uploadedBy: req.user.id,
+            workspaceId: driveId === 'personal' ? null : driveId,
             fileName: req.file.originalname,
-            s3Key: s3Data.Key,
             fileSize: req.file.size,
-            complianceStatus: initialStatus
+            s3Url: s3Result.Location,
+            s3Key: s3Result.Key
         });
-        const file = await newFile.save();
-        logEvent(ROUTE, 'DB Save successful', { fileId: file._id, status: initialStatus });
 
-        const mode = runCompliance ? "ENABLED" : "DISABLED";
+        await newFile.save();
 
-        // 8. Trigger Worker Queue (ONLY IF CHECKED)
-        if (runCompliance) {
-            logEvent(ROUTE, 'Compliance Checkbox ENABLED. Adding job to Queue...');
+        targetOwner.storageUsed += req.file.size;
+        await targetOwner.save();
+        console.log(`✅ [STORAGE API] DB updated. Upload complete.`);
 
-            await complianceQueue.add({
-                fileId: file._id,
-                userId: user.id,
-                s3Key: file.s3Key,
-                originalName: file.fileName
-            });
-            logEvent(ROUTE, 'Job queued successfully');
-        } else {
-            logEvent(ROUTE, 'Compliance Checkbox DISABLED. Skipping Queue.');
-        }
-
-        // --- 9. LOG TO BLOCKCHAIN (NEW STEP) ---
-        // We log this event regardless of scan status
-        logEvent(ROUTE, 'Logging event to Blockchain...');
         try {
-            await axios.post('http://localhost:5000/api/blockchain/log', {
-                type: "FILE_UPLOAD",
-                details: {
-                    userId: user.id,
-                    fileId: file._id,
-                    fileName: file.fileName,
-                    fileSize: file.fileSize,
-                    s3Key: file.s3Key, // Encrypted location
-                    complianceMode: runCompliance ? "ENABLED" : "DISABLED",
-                    timestamp: new Date().toISOString()
-                }
-            });
-            logEvent(ROUTE, 'Blockchain log successful');
-        } catch (bcErr) {
-            // Note: We catch errors here so the user still gets their file uploaded
-            // even if the blockchain service blips.
-            logError(ROUTE, 'Blockchain logging failed', bcErr);
+            await new Activity({
+                userId: req.user.id,
+                type: 'FILE_UPLOADED',
+                details: `Uploaded "${req.file.originalname}" to ${locationName}`
+            }).save();
+        } catch (logErr) {
+            console.error("⚠️ [STORAGE API] Activity logging failed (non-fatal):", logErr.message);
         }
 
-        // 10. Update User Usage
-        user.storageUsed += req.file.size;
-        await user.save();
-        logEvent(ROUTE, 'User storage usage updated');
-        addLog('UPLOAD', `User ${user.username} uploaded "${req.file.originalname}". Compliance: [${mode}]`);
-        res.json({
-            msg: runCompliance ? 'File Uploaded. Compliance scan started.' : 'File Uploaded (Scan Skipped).',
-            file: file
-        });
-        logEvent(ROUTE, 'Response sent to client');
+        return res.status(200).json({ msg: "Uploaded!", file: newFile });
 
     } catch (err) {
-        logError(ROUTE, 'Critical Failure', err);
-        res.status(500).json({ msg: 'Server Error', error: err.message });
+        // THE CRITICAL FIX: Actually logging the error!
+        console.error("💥 [STORAGE API] CRITICAL UPLOAD ERROR:", err);
+        return res.status(500).json({ msg: err.message || "Server Error during upload" });
     }
 });
 
-// =========================================================================
-// 2. DOWNLOAD ROUTE
-// =========================================================================
-router.get('/download/:fileId', auth, async (req, res) => {
-    const ROUTE = `GET /download/${req.params.fileId}`;
-    logEvent(ROUTE, 'Request received', { userId: req.user.id });
-
-    try {
-        const file = await File.findById(req.params.fileId);
-        if (!file) {
-            logError(ROUTE, 'File not found in DB');
-            addLog('WARN', `Download 404: User ${req.user.username} tried to access invalid File ID: ${req.params.fileId}`);
-            return res.status(404).json({ msg: "File not found" });
-        }
-
-        if (file.userId.toString() !== req.user.id) {
-            logError(ROUTE, 'Authorization Failed: User mismatch');
-            addLog('SECURITY', `🚫 UNAUTHORIZED ACCESS: User ${req.user.username} tried to download file "${file.fileName}" belonging to another user.`);
-            return res.status(401).json({ msg: "Not authorized" });
-        }
-
-        logEvent(ROUTE, 'Fetching from S3...', { s3Key: file.s3Key });
-        const s3Params = { Bucket: process.env.AWS_BUCKET_NAME, Key: file.s3Key };
-        const s3Object = await s3.getObject(s3Params).promise();
-
-        logEvent(ROUTE, 'Decrypting file...');
-        const decryptedBuffer = decryptBuffer(s3Object.Body);
-
-        res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
-        res.send(decryptedBuffer);
-        logEvent(ROUTE, 'File sent to client');
-        addLog('ACCESS', `User ${req.user.username} DOWNLOADED file "${file.fileName}"`);
-
-    } catch (err) {
-        addLog('ERROR', `Download System Failed for ${req.user ? req.user.username : 'Unknown'}: ${err.message}`);
-        logError(ROUTE, 'Download Failed', err);
-        res.status(500).json({ msg: "Error", error: err.message });
-    }
-});
-
-// =========================================================================
-// 3. LIST FILES ROUTE
-// =========================================================================
 router.get('/files', auth, async (req, res) => {
-    const ROUTE = 'GET /files';
-    logEvent(ROUTE, 'Listing files for user', { userId: req.user.id });
+    const driveId = req.query.drive || 'personal';
+    console.log(`\n📂 [STORAGE API] GET /files requested for drive: ${driveId} by user: ${req.user.id}`);
 
     try {
-        const files = await File.find({ userId: req.user.id }).sort({ uploadDate: -1 });
-        logEvent(ROUTE, `Found ${files.length} files`);
+        const targetOwner = await getTargetDrive(req);
+
+        const filter = {
+            owner: targetOwner._id,
+            workspaceId: driveId === 'personal' ? null : driveId
+        };
+
+        console.log(`[STORAGE API] Querying MongoDB for files... Filter:`, filter);
+        const files = await File.find(filter).populate('uploadedBy', 'username').sort({ date: -1 });
+
+        console.log(`✅ [STORAGE API] Success: Found ${files.length} files.`);
         res.json(files);
     } catch (err) {
-        logError(ROUTE, 'Database Query Failed', err);
-        res.status(500).json({ error: err.message });
+        // THE CRITICAL FIX: Actually logging the error!
+        console.error("💥 [STORAGE API] CRITICAL GET /files ERROR:", err);
+        res.status(500).send('Server Error');
     }
 });
 
-// =========================================================================
-// 4. DELETE ROUTE
-// =========================================================================
 router.delete('/files/:id', auth, async (req, res) => {
-    const ROUTE = `DELETE /files/${req.params.id}`;
-    logEvent(ROUTE, 'Request received', { userId: req.user.id });
-
+    console.log(`\n🗑️ [STORAGE API] DELETE /files/${req.params.id} requested by user: ${req.user.id}`);
     try {
         const file = await File.findById(req.params.id);
         if (!file) {
-            logError(ROUTE, 'File not found');
-            addLog('WARN', `Delete Failed: User ${req.user.username} tried to delete non-existent File ID.`);
+            console.warn(`⚠️ [STORAGE API] Delete aborted: File not found in DB.`);
             return res.status(404).json({ msg: "File not found" });
         }
 
-        if (file.userId.toString() !== req.user.id) {
-            logError(ROUTE, 'Unauthorized attempt');
-            addLog('SECURITY', `🚫 UNAUTHORIZED DELETE: User ${req.user.username} tried to destroy file "${file.fileName}" belonging to another user.`);
-            return res.status(401).json({ msg: "Not authorized" });
+        const targetOwner = await User.findById(file.owner);
+        const isWorkspaceOwner = targetOwner._id.toString() === req.user.id;
+        const isFileUploader = file.uploadedBy.toString() === req.user.id;
+
+        console.log(`[STORAGE API] Delete Permissions -> isWorkspaceOwner: ${isWorkspaceOwner}, isFileUploader: ${isFileUploader}`);
+
+        if (!isWorkspaceOwner && !isFileUploader) {
+            console.warn(`🚫 [STORAGE API] Delete rejected: Unauthorized.`);
+            return res.status(403).json({ msg: "Unauthorized: Only the workspace owner or the uploader can delete this file." });
         }
 
-        logEvent(ROUTE, 'Deleting Original from S3...', { key: file.s3Key });
+        console.log(`[STORAGE API] Deleting object from AWS S3... Key: ${file.s3Key}`);
         await s3.deleteObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: file.s3Key }).promise();
 
-        if (file.redactedS3Key) {
-            logEvent(ROUTE, 'Deleting Redacted version from S3...', { key: file.redactedS3Key });
-            await s3.deleteObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: file.redactedS3Key }).promise();
-        }
-
-        logEvent(ROUTE, 'Deleting metadata from DB...');
+        console.log(`[STORAGE API] Removing file record from MongoDB...`);
         await File.findByIdAndDelete(req.params.id);
 
-        // Update Storage
-        const user = req.user;
-        user.storageUsed -= file.fileSize;
-        if (user.storageUsed < 0) user.storageUsed = 0;
-        await user.save();
-        logEvent(ROUTE, 'User storage quota updated');
+        targetOwner.storageUsed = Math.max(0, targetOwner.storageUsed - file.fileSize);
+        await targetOwner.save();
+        console.log(`✅ [STORAGE API] Delete sequence complete.`);
 
-        addLog('WARN', `User ${user.username} DELETED file "${file.fileName}" (Freed ${(file.fileSize/1024).toFixed(1)} KB).`);
-        res.json({ msg: "Deleted" });
+        if (typeof Activity !== 'undefined') {
+            try {
+                const workspace = file.workspaceId ? targetOwner.workspacesCreated.id(file.workspaceId) : null;
+                const location = workspace ? `from workspace "${workspace.name}"` : 'from personal drive';
 
+                await new Activity({
+                    userId: req.user.id,
+                    type: 'FILE_DELETED',
+                    details: `Deleted "${file.fileName}" ${location}`
+                }).save();
+            } catch (logErr) {
+                console.error("⚠️ [STORAGE API] Activity logging failed (non-fatal):", logErr.message);
+            }
+        }
+
+        res.json({ msg: "File deleted and storage updated" });
     } catch (err) {
-        addLog('ERROR', `Delete System Failed for ${req.user ? req.user.username : 'Unknown'}: ${err.message}`);
-        logError(ROUTE, 'Delete Failed', err);
-        res.status(500).json({ error: err.message });
+        console.error("💥 [STORAGE API] CRITICAL DELETE ERROR:", err);
+        res.status(500).json({ msg: "Server Error: Could not delete file." });
     }
 });
 
-// =========================================================================
-// 5. SHARE LINK ROUTE
-// =========================================================================
-router.post('/share/:id', auth, async (req, res) => {
-    const ROUTE = `POST /share/${req.params.id}`;
-    logEvent(ROUTE, 'Share request received');
-
+router.get('/download/:id', auth, async (req, res) => {
+    console.log(`\n⬇️ [STORAGE API] GET /download/${req.params.id} requested by user: ${req.user.id}`);
     try {
-        const user = req.user;
-
-        if (user.trustScore < 50) {
-            addLog('SECURITY', `🚫 BLOCKED SHARE: User ${user.username} (Score: ${user.trustScore}) tried to generate a public link.`);
-            logError(ROUTE, 'Sharing blocked due to Low Trust Score');
-            return res.status(403).json({
-                msg: "⚠️ Sharing Disabled. Your Trust Score is too low.",
-                currentScore: user.trustScore
-            });
-        }
-
         const file = await File.findById(req.params.id);
         if (!file) {
-            addLog('WARN', `Share Failed: User ${user.username} tried to share invalid File ID.`);
+            console.warn(`⚠️ [STORAGE API] Download aborted: File not found in DB.`);
             return res.status(404).json({ msg: "File not found" });
         }
 
-        if (file.userId.toString() !== user.id) {
-            addLog('SECURITY', `🚫 UNAUTHORIZED SHARE: User ${user.username} tried to create a link for someone else's file "${file.fileName}".`);
-            return res.status(401).json({ msg: "Not authorized" });
-        }
+        const params = {
+            Bucket: process.env.AWS_BUCKET_NAME,
+            Key: file.s3Key
+        };
 
-        if (file.complianceStatus === 'redacted' || file.complianceStatus === 'failed') {
-            addLog('CRITICAL', `🛡️ DLP BLOCK: Stopped ${user.username} from sharing sensitive file "${file.fileName}" (Status: ${file.complianceStatus}).`);
-            logError(ROUTE, 'Sharing blocked due to Compliance Status', { status: file.complianceStatus });
-            return res.status(403).json({
-                msg: "⚠️ Cannot share this file. It contains sensitive PII or failed compliance."
-            });
-        }
-
-        logEvent(ROUTE, 'Generating share token...');
-        const token = crypto.randomBytes(16).toString('hex');
-        const expires = new Date();
-        expires.setHours(expires.getHours() + 24);
-
-        file.shareToken = token;
-        file.shareExpires = expires;
-        await file.save();
-
-        addLog('ACCESS', `User ${user.username} created PUBLIC LINK for "${file.fileName}". Expires in 24h.`);
-        logEvent(ROUTE, 'Share link generated', { token: token });
-        res.json({ link: `http://localhost:5000/api/storage/public/${token}` });
-
+        console.log(`✅ [STORAGE API] Piping file stream from AWS S3 to client... Key: ${file.s3Key}`);
+        const fileStream = s3.getObject(params).createReadStream();
+        res.attachment(file.fileName);
+        fileStream.pipe(res);
     } catch (err) {
-        addLog('ERROR', `Share System Failed for ${req.user ? req.user.username : 'Unknown'}: ${err.message}`);
-        logError(ROUTE, 'Share generation failed', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// =========================================================================
-// 6. PUBLIC DOWNLOAD ROUTE
-// =========================================================================
-router.get('/public/:token', async (req, res) => {
-    const ROUTE = `GET /public/${req.params.token}`;
-    logEvent(ROUTE, 'Public access attempt');
-
-    try {
-        const file = await File.findOne({ shareToken: req.params.token });
-
-        if (!file) {
-            logError(ROUTE, 'Invalid Token');
-            return res.status(404).json({ msg: "Invalid Link" });
-        }
-
-        if (new Date() > file.shareExpires) {
-            logError(ROUTE, 'Token Expired');
-            return res.status(410).json({ msg: "This link has expired." });
-        }
-
-        logEvent(ROUTE, 'Token Valid. Fetching from S3...', { s3Key: file.s3Key });
-
-        const s3Params = { Bucket: process.env.AWS_BUCKET_NAME, Key: file.s3Key };
-        const s3Object = await s3.getObject(s3Params).promise();
-        const decryptedBuffer = decryptBuffer(s3Object.Body);
-
-        res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
-        res.send(decryptedBuffer);
-        logEvent(ROUTE, 'Public file served');
-
-    } catch (err) {
-        logError(ROUTE, 'Public download failed', err);
-        res.status(500).json({ msg: "Error downloading shared file" });
-    }
-});
-
-// =========================================================================
-// 7. STATUS CHECK ROUTE
-// =========================================================================
-router.get('/status/:fileId', auth, async (req, res) => {
-    const ROUTE = `GET /status/${req.params.fileId}`;
-    // Reduced logging here to avoid spamming console if polling frequently
-    // logEvent(ROUTE, 'Status check');
-
-    try {
-        // 🛡️ SECURITY CHECK: Is this even a valid ID format?
-        if (!mongoose.Types.ObjectId.isValid(req.params.fileId)) {
-            // logError(ROUTE, 'Invalid File ID format received'); // Optional
-            return res.status(400).json({ msg: "Invalid File ID" });
-        }
-
-        const file = await File.findById(req.params.fileId);
-        if (!file) return res.status(404).json({ msg: "File not found" });
-
-
-        res.json({
-            status: file.complianceStatus,
-            report: file.piiReport
-        });
-    } catch (err) {
-        logError(ROUTE, 'Status check failed', err);
-        res.status(500).json({ error: err.message });
+        console.error("💥 [STORAGE API] CRITICAL DOWNLOAD ERROR:", err);
+        res.status(500).send('Server Error');
     }
 });
 

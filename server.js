@@ -21,16 +21,13 @@ mongoose.connect(process.env.MONGO_URI)
 // --- 3. API ROUTES ---
 // Auth: Login, Register, User Info (with Trust Score)
 app.use('/api/auth', require('./routes/auth'));
-
 // Storage: Upload, Download, Share, Delete (Triggers Worker)
 app.use('/api/storage', require('./routes/storage'));
-
 // Blockchain: Immutable Log of Uploads & Penalties
 app.use('/api/blockchain', require('./routes/blockchain'));
-
 // Subscription: Manage Plan Limits (Basic/Premium)
 app.use('/api/subscription', require('./routes/subscription'));
-
+// Admin: Manage Users, Monitoring, Banning
 app.use('/api/admin', require('./routes/admin'));
 
 // --- 4. GLOBAL ERROR HANDLER ---

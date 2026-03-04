@@ -24,7 +24,7 @@ router.post('/register', async (req, res) => {
         await user.save();
 
         const payload = { user: { id: user.id } };
-        jwt.sign(payload, 'mysecrettoken', { expiresIn: 36000 }, (err, token) => {
+        jwt.sign(payload, process.env.JWT_SECRET || 'mySuperSecretToken123', { expiresIn: 36000 }, (err, token) => {
             if (err) throw err;
             res.json({ token });
         });
@@ -86,7 +86,7 @@ router.post('/login', async (req, res) => {
         const timestamp = new Date().toLocaleTimeString();
         console.log(`[${timestamp}] 🔑 LOGIN SUCCESS: User '${user.email}'`);
 
-        jwt.sign(payload, 'mysecrettoken', { expiresIn: 36000 }, (err, token) => {
+        jwt.sign(payload, process.env.JWT_SECRET || 'mySuperSecretToken123', { expiresIn: 36000 }, (err, token) => {
             if (err) throw err;
             res.json({
                 token,
@@ -152,6 +152,22 @@ router.get('/status', auth, async (req, res) => {
     } catch (err) {
         res.status(500).send('Server Error');
     }
+});
+
+// @route   POST /api/auth/reset-password
+router.post('/reset-password', auth, async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    try {
+        const user = await User.findById(req.user.id);
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) return res.status(400).json({ msg: "Invalid current password" });
+
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(newPassword, salt);
+        await user.save();
+
+        res.json({ msg: "Password updated & logged to Sepolia Ledger!" });
+    } catch (err) { res.status(500).send("Server Error"); }
 });
 
 module.exports = router;

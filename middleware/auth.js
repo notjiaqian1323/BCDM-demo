@@ -10,7 +10,7 @@ module.exports = async function(req, res, next) {
 
     try {
         // 2. Verify Signature
-        const decoded = jwt.verify(token, 'mysecrettoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'mySuperSecretToken123');
 
         // 3. FETCH REAL-TIME USER DATA (The Upgrade)
         // We select only the fields we need for checks

@@ -3,12 +3,15 @@ const mongoose = require('mongoose');
 
 const FileSchema = new mongoose.Schema({
     // --- 1. BASIC FILE INFO ---
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true }, // The person who clicked upload
+    workspaceId: { type: String, default: null },
     fileName: { type: String, required: true },
     s3Key: { type: String, required: true }, // The Original Encrypted File
     fileSize: { type: Number, required: true },
+    s3Url: { type: String }, // Your AWS S3 URL
     fileHash: { type: String }, // For Blockchain integrity
-    uploadDate: { type: Date, default: Date.now },
+    date: { type: Date, default: Date.now },
 
     // --- 2. SHARING FEATURES (Keep these) ---
     shareToken: { type: String, default: null }, // Unique link token

@@ -1,537 +1,362 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BCDS Secure Dashboard</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; max-width: 1000px; margin: 2rem auto; background: #f4f6f9; color: #333; }
-        h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .full-width { grid-column: span 2; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        h2 { margin-top: 0; font-size: 1.2rem; border-bottom: 2px solid #eee; padding-bottom: 15px; color: #444; }
-        .status-box { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #2196f3; }
-
-        button { cursor: pointer; padding: 10px; color: white; border: none; border-radius: 6px; font-weight: bold; transition: 0.2s; }
-        button:hover { opacity: 0.9; }
-
-        .btn-upload { background: #6c757d; width: 100%; padding: 12px; }
-        .btn-view-chain { background: #343a40; }
-        .btn-hide-chain { background: #6c757d; display: none; }
-        .btn-download { background: #17a2b8; }
-        .btn-preview { background: #2ecc71; }
-        .btn-share { background: #f39c12; }
-        .btn-delete { background: #dc3545; }
-        .btn-report { background: #6f42c1; } /* Purple for AI Report */
-        .btn-logout { background: #c0392b; float: right; }
-
-        /* Compliance Badges */
-        .badge { padding: 5px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; display: inline-block; }
-        .badge-pending { background: #fff3cd; color: #856404; } /* Yellow */
-        .badge-scanning { background: #cce5ff; color: #004085; animation: pulse 1.5s infinite; } /* Blue Pulse */
-        .badge-clean { background: #d4edda; color: #155724; } /* Green */
-        .badge-redacted { background: #f8d7da; color: #721c24; } /* Red */
-        .badge-skipped { background: #e2e3e5; color: #383d41; } /* Grey */
-
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #f8f9fa; }
-
-        /* MODAL */
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); }
-        .modal-content { background: white; margin: 10% auto; padding: 20px; width: 600px; border-radius: 8px; position: relative; }
-        .modal-img { max-width: 100%; max-height: 80vh; display: block; margin: 0 auto; }
-        .close-modal { position: absolute; top: 10px; right: 20px; font-size: 25px; cursor: pointer; color: #333; }
-
-        /* JSON Report Pretty Print */
-        pre { background: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #ddd; overflow-x: auto; }
-    </style>
+    <title>BCDS Secure Cloud</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="./public/css/dashboard.css">
 </head>
+
 <body>
 
-<button onclick="logout()" class="btn-logout">🚪 Logout</button>
-<h1>🚀 BCDS Secure Dashboard</h1>
+<aside class="sidebar">
+    <div class="sidebar-header"><i class="fa-solid fa-shield-halved"></i> BCDS</div>
+    <div class="nav-menu">
+        <a class="nav-item active" id="nav-personal" onclick="switchTab('personal')"><i
+                class="fa-solid fa-hard-drive"></i> My Drive</a>
+        <a class="nav-item" id="nav-workspaces" onclick="switchTab('workspaces')"><i
+                class="fa-solid fa-network-wired"></i> Workspaces <span id="inviteBadge" class="badge"
+                                                                        style="display:none;">0</span></a>
+        <a class="nav-item" id="nav-profile" onclick="switchTab('profile')"><i class="fa-solid fa-user-gear"></i>
+            Account & Billing</a>
+    </div>
+    <div style="padding: 20px;">
+        <button class="btn btn-outline" style="color: #94a3b8; border-color: #334155; width: 100%;"
+                onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</button>
+    </div>
+</aside>
 
-<div class="grid">
-    <div class="card">
-        <h2>📂 Secure Upload</h2>
-        <form id="uploadForm">
-            <input type="file" name="file" required style="margin-bottom: 15px;">
+<main class="main-content">
+    <header class="topbar">
+        <div class="page-title" id="topbar-title">My Personal Drive</div>
+        <div style="display: flex; align-items: center; gap: 15px;">
+                <span id="topbar-email"
+                      style="font-weight: 500; font-size: 0.9rem; color: var(--text-muted);">Loading...</span>
+            <div style="width: 35px; height: 35px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;"
+                 id="topbar-avatar">U</div>
+        </div>
+    </header>
 
-            <div style="background: #fff3cd; padding: 10px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #ffeeba;">
-                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
-                    <input type="checkbox" name="runCompliance" style="width: 20px; height: 20px; margin-top: 3px;">
-                    <div>
-                        <strong>🛡️ Enable AI Compliance Scan</strong><br>
-                        <small style="color: #666;">Detects & Redacts PII (Names, IDs). Slower upload.</small>
+    <div id="personal-view" class="view-section active">
+        <div class="dashboard-grid">
+            <div style="display: flex; flex-direction: column; gap: 24px;">
+                <div class="card">
+                    <div class="card-header"><i class="fa-solid fa-cloud-arrow-up"
+                                                style="color: var(--primary);"></i>
+                        Secure Upload</div>
+                    <form id="uploadFormPersonal" onsubmit="handleUpload(event, 'personal')">
+                        <div class="upload-zone" onclick="document.getElementById('fileInputPersonal').click()">
+                            <i class="fa-solid fa-file-shield"
+                               style="font-size: 2.5rem; color: #cbd5e1; margin-bottom: 15px;"></i>
+                            <p style="color: var(--text-main); font-weight: 500;">Click to select file</p>
+                            <input type="file" id="fileInputPersonal" required style="display:none;"
+                                   onchange="document.getElementById('fileNamePersonal').innerText = this.files[0] ? this.files[0].name : ''">
+                            <p id="fileNamePersonal"
+                               style="margin-top:15px; font-weight:600; color:var(--primary);">
+                            </p>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="btnUploadPersonal"><i
+                                class="fa-solid fa-lock"></i> Encrypt to My Drive</button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <div class="card-header"><i class="fa-solid fa-clock-rotate-left"></i> Recent Activity</div>
+                    <div id="activityFeed" style="max-height: 250px; overflow-y: auto;">
+                        <p style="padding: 20px; text-align: center; color: var(--text-muted);">No recent activity.
+                        </p>
                     </div>
-                </label>
+                </div>
             </div>
 
-            <button type="submit" class="btn-upload">🔒 Encrypt & Upload</button>
-        </form>
-        <div id="uploadResult" style="margin-top: 10px;"></div>
-    </div>
-
-    <div class="card">
-        <h2>💎 Account Status</h2>
-        <div class="status-box" id="subStatus">Loading...</div>
-        <div style="display: flex; gap: 10px;">
-            <button class="btn-preview" onclick="upgradePlan('Premium')">⬆️ Upgrade</button>
-            <button class="btn-delete" onclick="resetPlan()">🔄 Reset</button>
-        </div>
-    </div>
-
-    <div class="card full-width">
-        <h2>🗂️ My Cloud Files</h2>
-        <button onclick="loadFiles()" style="width: auto; background: #6c757d; margin-bottom: 15px;">🔄 Refresh List</button>
-        <table style="width:100%">
-            <thead>
-            <tr>
-                <th>File Name</th>
-                <th>Size</th>
-                <th>Compliance Status</th> <th>Actions</th>
-            </tr>
-            </thead>
-            <tbody id="fileListBody"><tr><td colspan="4">Loading...</td></tr></tbody>
-        </table>
-    </div>
-
-    <div class="card full-width">
-        <h2>⛓️ Blockchain Ledger (Audit Trail)</h2>
-        <div style="display: flex; gap: 10px;">
-            <button id="btnViewChain" onclick="loadChain()" class="btn-view-chain">📜 View Immutable Log</button>
-            <button id="btnHideChain" onclick="hideChain()" class="btn-hide-chain">❌ Close</button>
-        </div>
-        <div id="chainViewer" style="margin-top: 15px;"></div>
-    </div>
-</div>
-
-<div id="imageModal" class="modal">
-    <div class="modal-content" style="width: auto; max-width: 80%; background: transparent; box-shadow: none;">
-        <span class="close-modal" onclick="closeModal('imageModal')" style="color: white;">&times;</span>
-        <img class="modal-img" id="previewImg">
-    </div>
-</div>
-
-<div id="reportModal" class="modal">
-    <div class="modal-content">
-        <span class="close-modal" onclick="closeModal('reportModal')">&times;</span>
-        <h3>🔍 NLP Compliance Report</h3>
-        <p><strong>Analysis Results:</strong></p>
-        <div id="reportContent">Loading...</div>
-        <button onclick="closeModal('reportModal')" style="width: 100%; margin-top: 15px; background: #333;">Close</button>
-    </div>
-</div>
-
-<div id="banModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:9999; justify-content:center; align-items:center;">
-    <div style="background:#1a1a1a; padding:40px; border-radius:15px; border: 2px solid #ff4444; text-align:center; max-width:500px; color:white; box-shadow: 0 0 50px rgba(255, 68, 68, 0.5);">
-        <h1 style="font-size:3rem; margin:0;">🚫</h1>
-        <h2 style="color:#ff4444;">ACCOUNT FROZEN</h2>
-        <p style="font-size:1.1rem; margin-top:20px;">
-            The Administrator has suspended your account due to the following violation:
-        </p>
-
-        <div id="banReasonText" style="background:#330000; padding:15px; border-radius:8px; margin:20px 0; color:#ffaaaa; font-weight:bold; border:1px solid #ff4444;">
-            Suspicious Activity Detected
-        </div>
-
-        <p class="text-secondary">
-            You will be redirected to the login page in <span id="banCountdown" style="color:white; font-weight:bold; font-size:1.5rem;">5</span> seconds.
-        </p>
-    </div>
-</div>
-
-<script>
-    // --- CONFIG & AUTH ---
-    const API_URL = 'http://localhost:5000/api';
-    const token = localStorage.getItem('token');
-    const authHeaders = { 'x-auth-token': token };
-
-    // Helper: Auth Check
-    // if (!token) window.location.href = 'login.html'; // Uncomment in prod
-
-    function logout() { localStorage.removeItem('token'); window.location.href = 'login.html'; }
-
-    function formatBytes(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024; const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    // --- 1. UPLOAD LOGIC ---
-    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const resultDiv = document.getElementById('uploadResult');
-        resultDiv.innerHTML = "⏳ Processing...";
-
-        const formData = new FormData(e.target);
-        // Checkbox value handling: if checked, send 'true'
-        const runCompliance = e.target.runCompliance.checked;
-        formData.set('runCompliance', runCompliance);
-
-        try {
-            const res = await fetch(`${API_URL}/storage/upload`, {
-                method: 'POST',
-                headers: authHeaders,
-                body: formData
-            });
-            const data = await res.json();
-
-            if (res.ok) {
-                resultDiv.innerHTML = `<p style="color:green; font-weight:bold;">✅ ${data.msg}</p>`;
-                loadFiles(); // Refresh list immediately
-
-                // If scanning started, start polling for status updates
-                if (runCompliance) startPolling(data.file._id);
-
-                // Log to blockchain (UI Feedback only)
-                logToBlockchain(data.file._id, resultDiv);
-            } else {
-                resultDiv.innerHTML = `<p style="color:red;">❌ ${data.msg}</p>`;
-            }
-        } catch (err) {
-            resultDiv.innerHTML = `<p style="color:red;">❌ Network Error (Is server running?)</p>`;
-        }
-    });
-
-    // --- 2. FILE LIST & STATUS POLLING ---
-    async function loadFiles() {
-        const listBody = document.getElementById('fileListBody');
-        try {
-            const res = await fetch(`${API_URL}/storage/files`, { headers: authHeaders });
-            const files = await res.json();
-            renderFileList(files);
-        } catch (err) {
-            listBody.innerHTML = '<tr><td colspan="4">Failed to load files (Backend Offline?)</td></tr>';
-        }
-    }
-
-    function renderFileList(files) {
-        const listBody = document.getElementById('fileListBody');
-        if (files.length === 0) { listBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No files yet.</td></tr>'; return; }
-
-        let html = '';
-        files.forEach(file => {
-            // Determine Badge Style
-            let badgeClass = 'badge-skipped';
-            let badgeText = 'Standard';
-
-            if (file.complianceStatus === 'pending') { badgeClass = 'badge-pending'; badgeText = '🟡 Pending'; }
-            else if (file.complianceStatus === 'scanning') { badgeClass = 'badge-scanning'; badgeText = '🔵 Scanning...'; }
-            else if (file.complianceStatus === 'clean') { badgeClass = 'badge-clean'; badgeText = '🟢 Safe (Clean)'; }
-            else if (file.complianceStatus === 'redacted') { badgeClass = 'badge-redacted'; badgeText = '🔴 PII Redacted'; }
-            else if (file.complianceStatus === 'failed') { badgeClass = 'badge-redacted'; badgeText = '❌ Scan Failed'; }
-
-            // Actions
-            const isImage = file.fileName.match(/\.(jpeg|jpg|gif|png)$/i);
-
-            // Show "Report" button only if scan was run
-            const showReport = (file.complianceStatus !== 'skipped' && file.complianceStatus !== 'pending');
-
-            html += `
-                <tr id="row-${file._id}">
-                    <td>${file.fileName}</td>
-                    <td>${formatBytes(file.fileSize)}</td>
-                    <td><span class="badge ${badgeClass}" id="status-${file._id}">${badgeText}</span></td>
-                    <td style="display:flex; gap:5px;">
-                        ${isImage ? `<button class="btn-preview" onclick="previewFile('${file._id}')" title="Preview">👁️</button>` : ''}
-                        <button class="btn-download" onclick="downloadFile('${file._id}', '${file.fileName}')" title="Download">⬇️</button>
-                        ${showReport ? `<button class="btn-report" onclick="viewReport('${file._id}')" title="View NLP Analysis">📊</button>` : ''}
-                        <button class="btn-share" onclick="shareFile('${file._id}')" title="Share Link">🔗</button>
-                        <button class="btn-delete" onclick="deleteFile('${file._id}')" title="Delete">🗑️</button>
-                    </td>
-                </tr>`;
-        });
-        listBody.innerHTML = html;
-    }
-
-    // --- 3. AUTO-POLLING LOGIC ---
-    // Checks status every 2 seconds for files that are 'scanning'
-    function startPolling(fileId) {
-        const interval = setInterval(async () => {
-            try {
-                const res = await fetch(`${API_URL}/storage/status/${fileId}`, { headers: authHeaders });
-                const data = await res.json();
-
-                // Update Badge in UI
-                const statusSpan = document.getElementById(`status-${fileId}`);
-                if (statusSpan) {
-                    if (data.status === 'scanning') {
-                        statusSpan.className = 'badge badge-scanning';
-                        statusSpan.innerText = '🔵 Scanning...';
-                    } else if (data.status === 'clean') {
-                        statusSpan.className = 'badge badge-clean';
-                        statusSpan.innerText = '🟢 Safe (Clean)';
-                        clearInterval(interval); // Stop polling
-                        loadFiles(); // Reload to show "Report" button
-                    } else if (data.status === 'redacted') {
-                        statusSpan.className = 'badge badge-redacted';
-                        statusSpan.innerText = '🔴 PII Redacted';
-                        clearInterval(interval);
-                        loadFiles();
-                    } else if (data.status === 'failed') {
-                        statusSpan.innerText = '❌ Failed';
-                        clearInterval(interval);
-                    }
-                }
-            } catch (e) { clearInterval(interval); }
-        }, 2000);
-    }
-
-    // --- 4. VIEW REPORT MODAL (PROFESSIONAL TABLE VERSION) ---
-    async function viewReport(fileId) {
-        const modal = document.getElementById('reportModal');
-        const content = document.getElementById('reportContent');
-        modal.style.display = 'block';
-
-        // Show Loading State
-        content.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">🔍 Decrypting & Fetching Audit Log...</div>';
-
-        try {
-            const res = await fetch(`${API_URL}/storage/status/${fileId}`, { headers: authHeaders });
-            const data = await res.json();
-
-            // 🛑 DEBUG: Check what the server actually sent
-            console.log("🔍 Server Response:", data);
-            console.log("📊 PII Report Data:", data.piiReport);
-
-            // Check for 'report' OR 'piiReport' to be safe
-            const reportData = data.report || data.piiReport;
-            console.log("📊 PII Report Data:", reportData);
-
-            // 🛑 CASE 1: THREATS FOUND
-            if (reportData && reportData.length > 0) {
-
-                // Build Rows
-                const rows = reportData.map(item => {
-                    // Color Code the Badges
-                    let badgeColor = '#3b82f6'; // Blue (Email)
-                    if(item.type.includes('NRIC') || item.type.includes('CREDIT')) badgeColor = '#ef4444'; // Red (High Risk)
-                    if(item.type.includes('PHONE')) badgeColor = '#f59e0b'; // Amber
-
-                    return `
-                <tr style="border-bottom:1px solid #334155;">
-                    <td style="padding:12px;">
-                        <span style="background:${badgeColor}20; color:${badgeColor}; padding:4px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; border:1px solid ${badgeColor};">
-                            ${item.type}
-                        </span>
-                    </td>
-                    <td style="padding:12px; font-family:'Consolas', monospace; color:#e2e8f0;">
-                        ${item.text}
-                    </td>
-                    <td style="padding:12px; text-align:center; color:#94a3b8;">
-                        Pg ${item.page}
-                    </td>
-                    <td style="padding:12px; text-align:right;">
-                        <span style="color:${item.score > 0.8 ? '#10b981' : '#f59e0b'}; font-weight:bold;">
-                            ${(item.score * 100).toFixed(0)}%
-                        </span>
-                    </td>
-                </tr>`;
-                }).join('');
-
-                // Build Table
-                content.innerHTML = `
-                <div style="background:#0f172a; border-radius:8px; overflow:hidden; border:1px solid #334155;">
-                    <div style="padding:15px; background:#1e293b; border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center;">
-                        <span style="color:#ef4444; font-weight:bold;">🚨 VIOLATIONS DETECTED</span>
-                        <span style="background:#ef4444; color:white; padding:2px 8px; border-radius:10px; font-size:0.8rem;">${reportData.length}</span>
+            <div style="display: flex; flex-direction: column; gap: 24px;">
+                <div class="card" style="padding: 20px;">
+                    <div
+                            style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9rem;">
+                            <span style="font-weight: 600; color: var(--text-main);"><i class="fa-solid fa-database"
+                                                                                        style="color: var(--text-muted);"></i> Storage Usage</span>
+                        <span id="personalStorageText">Loading...</span>
                     </div>
+                    <div class="progress-bg">
+                        <div class="progress-fill" id="personalStorageBar" style="width: 0%;"></div>
+                    </div>
+                </div>
 
-                    <div style="max-height:400px; overflow-y:auto;">
-                        <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
-                            <thead style="background:#1e293b; color:#94a3b8; font-size:0.8rem; text-transform:uppercase;">
-                                <tr>
-                                    <th style="padding:10px; text-align:left;">Type</th>
-                                    <th style="padding:10px; text-align:left;">Redacted Content</th>
-                                    <th style="padding:10px; text-align:center;">Loc</th>
-                                    <th style="padding:10px; text-align:right;">Confidence</th>
-                                </tr>
+                <div class="card" style="flex: 1;">
+                    <div class="card-header" style="justify-content: space-between;">
+                        <div><i class="fa-solid fa-folder-open" style="color: var(--text-muted);"></i> My Files
+                        </div>
+                        <button class="btn btn-outline" style="width:auto; padding:5px 10px; font-size: 0.85rem;"
+                                onclick="loadFiles('personal', 'fileListPersonal')"><i
+                                class="fa-solid fa-rotate-right"></i></button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>File Name</th>
+                                <th>Uploaded By</th>
+                                <th>Size</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
                             </thead>
-                            <tbody>
-                                ${rows}
+                            <tbody id="fileListPersonal">
+                            <tr>
+                                <td colspan="4" style="text-align:center;"><i
+                                        class="fa-solid fa-spinner fa-spin"></i> Loading...</td>
+                            </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
-                <p style="margin-top:15px; font-size:0.8rem; color:#94a3b8; text-align:center;">
-                    ℹ️ These entities have been permanently redacted from the file stored on cloud.
-                </p>
-            `;
+            </div>
+        </div>
+    </div>
 
-                // ✅ CASE 2: CLEAN FILE
-            } else {
-                content.innerHTML = `
-                <div style="text-align:center; padding:40px;">
-                    <div style="font-size:3rem; margin-bottom:10px;">🛡️</div>
-                    <h3 style="color:#10b981; margin:0;">Clean Document</h3>
-                    <p style="color:#94a3b8; margin-top:5px;">No Sensitive PII was detected by the NLP Engine.</p>
-                </div>`;
-            }
+    <div id="workspaces-view" class="view-section">
 
-        } catch (e) {
-            console.error(e);
-            content.innerHTML = `<p style="color:red; text-align:center;">❌ Error loading compliance report.</p>`;
-        }
-    }
+        <div id="wsInboxArea" style="display: none; margin-bottom: 30px;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--warning);"><i
+                    class="fa-solid fa-envelope-open-text"></i> Pending Invitations</h3>
+            <div id="wsInboxList"></div>
+        </div>
 
-    // --- 5. STANDARD ACTIONS (Preview, Download, Share, Delete) ---
-    async function downloadFile(id, name) {
-        try {
-            const res = await fetch(`${API_URL}/storage/download/${id}`, { headers: authHeaders });
-            if(!res.ok) throw new Error("Fail");
-            const blob = await res.blob();
-            const link = document.createElement('a');
-            link.href = window.URL.createObjectURL(blob);
-            link.download = name;
-            link.click();
-        } catch(e) { alert("Download failed."); }
-    }
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="font-size: 1.1rem; color: #0f172a;"><i class="fa-solid fa-network-wired"
+                                                              style="color: var(--workspace);"></i> My Workspaces</h3>
+            <button class="btn btn-workspace" style="width: auto; padding: 8px 16px; font-size: 0.85rem;"
+                    onclick="openWorkspaceModal()">
+                <i class="fa-solid fa-folder-plus"></i> Create New Workspace
+            </button>
+        </div>
+        <div class="ws-grid" id="wsJoinedGrid">
+            <div style="grid-column: 1/-1; color: var(--text-muted); font-size: 0.9rem;">You haven't joined any
+                workspaces yet.</div>
+        </div>
 
-    async function previewFile(id) {
-        const modal = document.getElementById('imageModal');
-        const img = document.getElementById('previewImg');
-        try {
-            const res = await fetch(`${API_URL}/storage/download/${id}`, { headers: authHeaders });
-            const blob = await res.blob();
-            img.src = window.URL.createObjectURL(blob);
-            modal.style.display = 'block';
-        } catch(e) { alert("Could not preview image."); }
-    }
+        <div class="card full-width" style="border-top: 4px solid var(--primary); margin-top: 24px;">
+            <div class="card-header" style="border-bottom: 1px solid var(--border); padding-bottom: 15px;">
+                <i class="fa-solid fa-users-gear"></i> Manage Team Invitations
+            </div>
 
-    async function shareFile(id) {
-        try {
-            const res = await fetch(`${API_URL}/storage/share/${id}`, { method: 'POST', headers: authHeaders });
-            const data = await res.json();
-            if(res.ok) prompt("🔗 Public Share Link (Valid for 24h):", data.link);
-            else alert(data.msg); // Show error (e.g., Trust Score too low)
-        } catch(e) { alert("Server Error"); }
-    }
+            <div class="dashboard-grid"
+                 style="margin-bottom: 0; grid-template-columns: 1fr 1fr; gap: 40px; padding-top: 20px;">
+                <div>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;"
+                       id="shareLimitText">
+                        Select a workspace to invite members.
+                    </p>
 
-    async function deleteFile(id) {
-        if(!confirm("Permanently delete this file?")) return;
-        try {
-            await fetch(`${API_URL}/storage/files/${id}`, { method: 'DELETE', headers: authHeaders });
-            loadFiles(); loadStatus();
-        } catch(e) { alert("Delete failed"); }
-    }
+                    <div style="margin-bottom: 20px;">
+                        <label
+                                style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 8px;">1.
+                            Select Target Workspace</label>
+                        <select id="inviteWorkspaceSelect"
+                                style="width:100%; padding:14px; border:1px solid var(--border); border-radius:8px; outline:none; background: #f8fafc; cursor: pointer; font-weight: 500; color: var(--text-main); transition: 0.2s;">
+                            <option value="">-- Choose a workspace --</option>
+                        </select>
+                    </div>
 
-    // --- 6. BLOCKCHAIN LOGIC ---
-    async function loadChain() {
-        const viewer = document.getElementById('chainViewer');
-        document.getElementById('btnViewChain').style.display = 'none';
-        document.getElementById('btnHideChain').style.display = 'block';
-        viewer.innerHTML = "Fetching Immutable Ledger...";
+                    <div style="margin-bottom: 20px;">
+                        <label
+                                style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 8px;">2.
+                            Enter Team Member Email</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="email" id="shareEmailInput" placeholder="team@example.com"
+                                   style="flex:1; padding:14px; border:1px solid var(--border); border-radius:8px; outline:none; background: #f8fafc;">
+                            <button class="btn btn-primary" style="width:auto; padding: 0 25px; border-radius: 8px;"
+                                    onclick="shareStorage()">
+                                <i class="fa-solid fa-paper-plane"></i> Send Invite
+                            </button>
+                        </div>
+                    </div>
 
-        try {
-            const res = await fetch(`${API_URL}/blockchain/chain`);
-            const chain = await res.json();
-            viewer.innerHTML = chain.map(b => {
-                // Check if it's a Penalty or Upload block
-                const isPenalty = b.data && b.data.type === 'REPUTATION_PENALTY';
-                const color = isPenalty ? '#ffe6e6' : '#fff'; // Red background for penalties
+                    <div
+                            style="background: #eef2ff; padding: 15px; border-radius: 8px; border: 1px solid #c7d2fe; display: flex; gap: 12px; align-items: start;">
+                        <i class="fa-solid fa-circle-info" style="color: var(--primary); margin-top: 3px;"></i>
+                        <p style="font-size: 0.85rem; color: #4338ca; line-height: 1.4;">Invited users only gain
+                            access to the **specific folder** selected above. Your personal drive remains private.
+                        </p>
+                    </div>
+                </div>
 
-                return `<div style="border:1px solid #ddd; padding:10px; margin-bottom:5px; background:${color}; border-left: 5px solid ${isPenalty ? 'red' : 'green'};">
-                        <strong>Block #${b.index}</strong> | ${b.timestamp}<br>
-                        <small>Hash: ${b.hash.substring(0,20)}...</small><br>
-                        <pre style="font-size:0.8em; margin:5px 0;">${JSON.stringify(b.data, null, 2)}</pre>
-                    </div>`;
-            }).join('');
-        } catch(e) { viewer.innerHTML = "Error loading chain."; }
-    }
+                <div class="table-container">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Invite Email</th>
+                            <th>Workspace</th>
+                            <th>Status</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                        </thead>
+                        <tbody id="sentInvitesList"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    function hideChain() {
-        document.getElementById('chainViewer').innerHTML = "";
-        document.getElementById('btnViewChain').style.display = 'block';
-        document.getElementById('btnHideChain').style.display = 'none';
-    }
+    <div id="explorer-view" class="view-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <button class="btn btn-outline" style="width: auto;" onclick="switchTab('workspaces')"><i
+                    class="fa-solid fa-arrow-left"></i> Back to Hub</button>
 
-    // Mock Blockchain Logger for UI Feedback
-    async function logToBlockchain(fileId, element) {
-        element.innerHTML += `<div style="color:blue; font-size:0.9em; margin-top:5px;">⛓️ Transaction broadcasted to Blockchain Ledger...</div>`;
-    }
+            <div style="display: flex; gap: 15px; align-items: center;">
+                    <span id="workspaceOwnerBadge"
+                          style="background: #e0e7ff; color: var(--workspace); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; border: 1px solid #c7d2fe;">
+                        <i class="fa-solid fa-crown" style="margin-right: 5px;"></i> Owned by: Loading...
+                    </span>
+                <button id="leaveWorkspaceBtn" class="btn"
+                        style="background: var(--danger); color: white; width: auto; font-size: 0.85rem;"
+                        onclick="leaveCurrentWorkspace()">
+                    <i class="fa-solid fa-person-walking-arrow-right"></i> Leave Workspace
+                </button>
+                <button id="deleteWorkspaceBtn" class="btn"
+                        style="background: var(--danger); color: white; width: auto; font-size: 0.85rem; display: none;"
+                        onclick="deleteOwnedWorkspace()">
+                    <i class="fa-solid fa-trash-can"></i> Delete Workspace
+                </button>
+            </div>
+        </div>
 
-    // Helper: Modal Closer
-    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-header"><i class="fa-solid fa-cloud-arrow-up" style="color: var(--workspace);"></i>
+                    Upload to Team</div>
+                <form id="uploadFormWorkspace" onsubmit="handleUpload(event, currentWorkspaceId)">
+                    <div class="upload-zone workspace-theme"
+                         onclick="document.getElementById('fileInputWorkspace').click()">
+                        <i class="fa-solid fa-file-export"
+                           style="font-size: 2.5rem; color: #c4b5fd; margin-bottom: 15px;"></i>
+                        <p style="color: var(--text-main); font-weight: 500;">Click to select file</p>
+                        <input type="file" id="fileInputWorkspace" required style="display:none;"
+                               onchange="document.getElementById('fileNameWorkspace').innerText = this.files[0] ? this.files[0].name : ''">
+                        <p id="fileNameWorkspace" style="margin-top:15px; font-weight:600; color:var(--workspace);">
+                        </p>
+                    </div>
+                    <button type="submit" class="btn btn-workspace" id="btnUploadWorkspace"><i
+                            class="fa-solid fa-lock"></i> Encrypt to Workspace</button>
+                </form>
+            </div>
 
-    // --- 7. SUBSCRIPTION & PLAN (Basic) ---
-    async function loadStatus() {
-        try {
-            const res = await fetch(`${API_URL}/subscription/status`, { headers: authHeaders });
-            const data = await res.json();
-            document.getElementById('subStatus').innerHTML = `
-                    <strong>Plan:</strong> ${data.package}<br>
-                    <strong>Used:</strong> ${formatBytes(data.used)} / ${formatBytes(data.limit)} (${data.percentage})
-                `;
-        } catch(e) { document.getElementById('subStatus').innerText = "Account Info Unavailable"; }
-    }
+            <div class="card">
+                <div class="card-header" style="justify-content: space-between;">
+                    <div><i class="fa-regular fa-folder-open" style="color: var(--workspace);"></i> Shared Files
+                    </div>
+                    <button class="btn btn-outline" style="width:auto; padding:5px 10px; font-size: 0.85rem;"
+                            onclick="loadFiles(currentWorkspaceId, 'fileListWorkspace')"><i
+                            class="fa-solid fa-rotate-right"></i></button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Uploaded By</th>
+                            <th>Size</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                        </thead>
+                        <tbody id="fileListWorkspace">
+                        <tr>
+                            <td colspan="4" style="text-align:center;"><i
+                                    class="fa-solid fa-spinner fa-spin"></i> Loading...</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    // --- 🛡️ LIVE SECURITY CHECK ---
-    // Polls the server every 3 seconds to check ban status
-    setInterval(checkAccountStatus, 3000);
+    <div id="profile-view" class="view-section">
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-header"><i class="fa-solid fa-gem" style="color: var(--workspace);"></i> Billing &
+                    Subscription</div>
+                <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px;"
+                     id="subStatus">
+                    <i class="fa-solid fa-spinner fa-spin"></i> Loading plan...
+                </div>
+                <div id="dateStatus"
+                     style="font-size: 0.9rem; color: var(--text-main); margin-bottom: 20px; padding: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; font-weight: 500;">
+                </div>
 
-    async function checkAccountStatus() {
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) return; // Already logged out
+                <div id="upgradeButtons" style="display: grid; gap: 10px;">
+                    <button class="btn" style="background:#10b981; color:white;"
+                            onclick="redirectToStripe('Premium')"><i class="fa-solid fa-credit-card"></i> Upgrade to
+                        Premium (RM40/mo)</button>
+                    <button class="btn" style="background:#8b5cf6; color:white;"
+                            onclick="redirectToStripe('Enterprise')"><i class="fa-solid fa-building"></i> Upgrade to
+                        Enterprise (RM120/mo)</button>
+                </div>
+            </div>
 
-            const res = await fetch('http://localhost:5000/api/auth/status', {
-                headers: { 'x-auth-token': token }
-            });
+            <div class="card">
+                <div class="card-header"><i class="fa-solid fa-shield-halved" style="color: var(--primary);"></i>
+                    Security Settings</div>
+                <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom:20px; line-height: 1.5;">Your
+                    files are encrypted using AES-256 standard and access logs are permanently recorded on the
+                    Ethereum Sepolia network.</p>
 
-            const data = await res.json();
+                <div
+                        style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid var(--border);">
+                    <h4 style="margin-bottom: 15px; font-size: 1rem;">Update Encryption Password</h4>
+                    <input type="password" id="currentPassword" placeholder="Current Password"
+                           style="width:100%; padding:12px; border:1px solid var(--border); border-radius:6px; margin-bottom:10px; outline:none;">
+                    <input type="password" id="newPassword" placeholder="New Strong Password"
+                           style="width:100%; padding:12px; border:1px solid var(--border); border-radius:6px; margin-bottom:15px; outline:none;">
+                    <button class="btn btn-primary" id="btnConfirmReset" onclick="processPasswordReset()"><i
+                            class="fa-brands fa-ethereum"></i> Reset & Log to Sepolia</button>
+                    <div id="resetMessage" style="margin-top: 15px; font-weight: 500; font-size: 0.9rem;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="createWorkspaceModal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <span class="close-modal" onclick="closeWorkspaceModal()">&times;</span>
+            <h2 style="margin-bottom: 15px; color:#0f172a;"><i class="fa-solid fa-folder-plus"
+                                                               style="color:var(--workspace);"></i> New Workspace</h2>
+            <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:20px;">Allocate a portion of your
+                total storage to a dedicated team folder.</p>
 
-            // 🚨 IF BANNED: TRIGGER THE POPUP
-            if (data.isBanned) {
-                showBanModal(data.banReason || "Violation of Terms of Service");
-            }
+            <div class="form-group">
+                <label>Workspace Name</label>
+                <input type="text" id="wsName" placeholder="e.g., Marketing Assets"
+                       style="width:100%; padding:12px; border:1px solid var(--border); border-radius:6px; margin-bottom:15px; outline:none;">
+            </div>
 
-            // OPTIONAL: Update Trust Score Live
-            // updateTrustScoreUI(data.trustScore);
+            <div class="form-group">
+                <label>Allocate Storage (GB)</label>
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                    <input type="range" id="wsStorageSlider" min="1" max="100" value="5"
+                           style="flex:1; cursor:pointer;"
+                           oninput="document.getElementById('wsStorageValue').innerText = this.value + ' GB'">
+                    <span id="wsStorageValue"
+                          style="font-weight: 600; color: var(--primary); width: 60px; text-align: right;">5 GB</span>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--warning);" id="wsAvailableText">Calculating available
+                    quota...</p>
+            </div>
 
-        } catch (err) {
-            console.error("Security Check Failed", err);
-        }
-    }
-
-    let isBanSequenceStarted = false;
-
-    function showBanModal(reason) {
-        if(isBanSequenceStarted) return; // Don't trigger twice
-        isBanSequenceStarted = true;
-
-        // 1. Show the scary modal
-        const modal = document.getElementById('banModal');
-        const reasonText = document.getElementById('banReasonText');
-        const countdownSpan = document.getElementById('banCountdown');
-
-        reasonText.innerText = reason;
-        modal.style.display = "flex"; // Flex centers it
-
-        // 2. Start the Countdown (5..4..3..)
-        let seconds = 5;
-        const interval = setInterval(() => {
-            seconds--;
-            countdownSpan.innerText = seconds;
-
-            if (seconds <= 0) {
-                clearInterval(interval);
-                // 3. The Final Kick
-                localStorage.removeItem('token');
-                window.location.href = 'login.html?reason=banned';
-            }
-        }, 1000);
-    }
-
-    // Initial Load
-    loadStatus();
-    loadFiles();
-
-</script>
+            <button class="btn btn-workspace" id="btnCreateWorkspace" onclick="submitNewWorkspace()"
+                    style="padding:15px; margin-top: 10px;">
+                <i class="fa-solid fa-hammer"></i> Create Workspace
+            </button>
+            <div id="wsCreateMessage"
+                 style="margin-top: 15px; font-weight: 500; font-size: 0.9rem; text-align: center;"></div>
+        </div>
+    </div>
+</main>
+<script src="./public/js/main/dashboard-core.js"></script>
+<script src="./public/js/main/dashboard-files.js"></script>
+<script src="./public/js/main/dashboard-workspaces.js"></script>
 </body>
+
 </html>
