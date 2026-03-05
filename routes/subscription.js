@@ -321,7 +321,7 @@ router.post('/create-checkout', auth, async (req, res) => {
     const { plan } = req.body;
     const prices = {
         'Premium': 'price_1T7A06GpYkDBDjPdPOFenoj4',
-        'Enterprise': 'price_1T7A0LGpYkDBDjPdUxdXFBUu'
+        'Enterprise': 'prod_U5iYofJgJyFOn9'
     };
 
     const session = await stripe.checkout.sessions.create({

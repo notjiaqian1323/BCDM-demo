@@ -3,3 +3,4 @@ pymupdf==1.23.8
 tqdm
 requests
 torch --index-url https://download.pytorch.org/whl/cpu
+hf_xet

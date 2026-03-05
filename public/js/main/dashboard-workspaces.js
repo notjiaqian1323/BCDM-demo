@@ -19,7 +19,7 @@ async function shareStorage() {
 
     console.log(`[WORKSPACES] Sending invite to ${email} for workspace ${selectedWsId}...`);
     try {
-        const res = await fetch('http://127.0.0.1:5001/api/subscription/share', {
+        const res = await fetch('http://127.0.0.1:5002/api/subscription/share', {
             method: 'POST',
             headers: authHeaders,
             body: JSON.stringify({ emailToShare: email, workspaceId: selectedWsId })
@@ -45,7 +45,7 @@ async function shareStorage() {
 async function acceptInvite(inviteId) {
     console.log(`[WORKSPACES] Accepting invite ID: ${inviteId}`);
     try {
-        const res = await fetch(`http://127.0.0.1:5001/api/subscription/accept-invite/${inviteId}`, {
+        const res = await fetch(`http://127.0.0.1:5002/api/subscription/accept-invite/${inviteId}`, {
             method: 'POST',
             headers: authHeaders
         });
@@ -66,7 +66,7 @@ async function rejectInvite(inviteId) {
     console.log(`[WORKSPACES] Rejecting invite ID: ${inviteId}`);
     if (!confirm("Are you sure you want to decline this workspace invitation?")) return;
     try {
-        const res = await fetch(`http://127.0.0.1:5001/api/subscription/reject-invite/${inviteId}`, {
+        const res = await fetch(`http://127.0.0.1:5002/api/subscription/reject-invite/${inviteId}`, {
             method: 'POST',
             headers: authHeaders
         });
@@ -89,7 +89,7 @@ async function revokeInvite(inviteId) {
     console.log(`[WORKSPACES] Revoking invite ID: ${inviteId}`);
     if (!confirm("Are you sure you want to cancel this invitation?")) return;
     try {
-        const res = await fetch(`http://127.0.0.1:5001/api/subscription/revoke-invite/${inviteId}`, {
+        const res = await fetch(`http://127.0.0.1:5002/api/subscription/revoke-invite/${inviteId}`, {
             method: 'DELETE',
             headers: authHeaders
         });
@@ -123,7 +123,7 @@ async function submitNewWorkspace() {
     msgDiv.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating...';
 
     try {
-        const res = await fetch('http://127.0.0.1:5001/api/subscription/workspaces', {
+        const res = await fetch('http://127.0.0.1:5002/api/subscription/workspaces', {
             method: 'POST',
             headers: authHeaders,
             body: JSON.stringify({ name: name.trim(), allocateGB: gb })
@@ -154,7 +154,7 @@ async function openWorkspaceModal() {
     const slider = document.getElementById('wsStorageSlider');
 
     try {
-        const res = await fetch('http://127.0.0.1:5001/api/subscription/status', {
+        const res = await fetch('http://127.0.0.1:5002/api/subscription/status', {
             headers: { 'x-auth-token': localStorage.getItem('token') }
         });
         const data = await res.json();
@@ -180,7 +180,7 @@ async function deleteOwnedWorkspace() {
     if (!confirm("CRITICAL: Permanently delete this workspace and reclaim your GBs?")) return;
 
     try {
-        const res = await fetch(`http://127.0.0.1:5001/api/subscription/workspaces/${currentWorkspaceId}`, {
+        const res = await fetch(`http://127.0.0.1:5002/api/subscription/workspaces/${currentWorkspaceId}`, {
             method: 'DELETE',
             headers: { 'x-auth-token': localStorage.getItem('token'), 'Content-Type': 'application/json' }
         });
@@ -206,7 +206,7 @@ async function leaveCurrentWorkspace() {
     if (!confirm("Are you sure you want to leave this team workspace? You will need a new invite to rejoin.")) return;
 
     try {
-        const res = await fetch(`http://127.0.0.1:5001/api/subscription/leave-workspace/${currentWorkspaceId}`, {
+        const res = await fetch(`http://127.0.0.1:5002/api/subscription/leave-workspace/${currentWorkspaceId}`, {
             method: 'POST',
             headers: authHeaders
         });
@@ -230,7 +230,7 @@ async function leaveCurrentWorkspace() {
 async function redirectToStripe(planName) {
     console.log(`💳 [WORKSPACES] Initiating Stripe checkout for plan: ${planName}`);
     try {
-        const res = await fetch('http://127.0.0.1:5001/api/subscription/create-checkout', {
+        const res = await fetch('http://127.0.0.1:5002/api/subscription/create-checkout', {
             method: 'POST',
             headers: authHeaders,
             body: JSON.stringify({ plan: planName })

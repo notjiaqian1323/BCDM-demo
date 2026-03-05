@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const FileSchema = new mongoose.Schema({
     // --- 1. BASIC FILE INFO ---
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true }, // The person who clicked upload
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // The person who clicked upload
     workspaceId: { type: String, default: null },
     fileName: { type: String, required: true },
     s3Key: { type: String, required: true }, // The Original Encrypted File
@@ -24,7 +24,7 @@ const FileSchema = new mongoose.Schema({
     // Status Tracker for the Frontend Dashboard
     complianceStatus: {
         type: String,
-        enum: ['pending', 'scanning', 'clean', 'redacted', 'failed', 'skipped'],
+        enum: ['pending', 'scanning', 'clean', 'redacted', 'failed', 'skipped', 'rejected'],
         default: 'pending'
     },
 

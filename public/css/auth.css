@@ -1,0 +1,68 @@
+:root {
+    --primary: #4f46e5; --primary-hover: #4338ca;
+    --bg-color: #f8fafc; --card-bg: #ffffff;
+    --text-main: #334155; --text-muted: #64748b;
+    --border: #e2e8f0; --danger: #ef4444;
+    --admin-bg: #1e293b; --admin-hover: #0f172a;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+body { display: flex; height: 100vh; background-color: var(--bg-color); align-items: center; justify-content: center; }
+
+.auth-container { width: 100%; max-width: 400px; background: var(--card-bg); padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid var(--border); }
+.auth-header { text-align: center; margin-bottom: 30px; }
+.auth-header i { font-size: 3rem; color: var(--primary); margin-bottom: 15px; }
+.auth-header h1 { font-size: 1.5rem; color: #0f172a; }
+
+.toggle-btns { display: flex; background: #f1f5f9; border-radius: 8px; padding: 5px; margin-bottom: 25px; }
+.toggle-btn { flex: 1; text-align: center; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--text-muted); transition: 0.2s; }
+.toggle-btn.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+.form-group { margin-bottom: 15px; }
+.form-group label { display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-main); margin-bottom: 5px; }
+.form-group input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; outline: none; transition: 0.2s; background: #f8fafc; }
+.form-group input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); background: white; }
+
+.btn { width: 100%; padding: 12px; border: none; border-radius: 6px; background: var(--primary); color: white; font-weight: 600; font-size: 1rem; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+.btn:hover { background: var(--primary-hover); }
+
+.error-msg { color: var(--danger); font-size: 0.85rem; text-align: center; margin-top: 15px; min-height: 20px; font-weight: 500; }
+
+#register-form { display: none; }
+
+/* NEW: Admin Button Styles */
+.btn-admin {
+    background-color: var(--admin-bg);
+    margin-top: 5px;
+}
+
+.btn-admin:hover {
+    background-color: var(--admin-hover);
+}
+
+/* NEW: Divider Line */
+.admin-divider {
+    text-align: center;
+    margin: 20px 0 15px;
+    position: relative;
+}
+
+.admin-divider span {
+    background: var(--card-bg);
+    padding: 0 10px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    position: relative;
+    z-index: 1;
+}
+
+.admin-divider::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--border);
+    z-index: 0;
+}

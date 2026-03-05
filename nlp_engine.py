@@ -4,79 +4,64 @@ import json
 import re
 import os
 from gliner import GLiNER
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import uvicorn
 
 # --- CONFIGURATION ---
-# ⚠️ UPDATE THIS PATH to where you installed Tesseract!
-# If you added Tesseract to your Windows PATH, you can set this to None.
-# Otherwise, point it exactly to the .exe
-# --- CONFIGURATION ---
-# 1. Point to the executable
 TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
-# 2. Point to the data folder
 if TESSERACT_PATH and os.path.exists(TESSERACT_PATH):
-    # Get the installation folder (C:\Program Files\Tesseract-OCR)
     install_folder = os.path.dirname(TESSERACT_PATH)
-
-    # Append 'tessdata' to it (C:\Program Files\Tesseract-OCR\tessdata)
     tessdata_folder = os.path.join(install_folder, 'tessdata')
-
-    # Set the environment variable
     os.environ["TESSDATA_PREFIX"] = tessdata_folder
 
-# --- 0. DEBUG HELPER ---
 def log_debug(msg):
     sys.stderr.write(f"[Python DEBUG] {msg}\n")
     sys.stderr.flush()
 
-# --- 1. LOAD GLiNER ---
+def log_progress(msg):
+    sys.stderr.write(f"⏳ [PYTHON STATUS] {msg}\n")
+    sys.stderr.flush()
+
+# --- 1. LOAD GLiNER (ONCE AT BOOT) ---
 try:
-    log_debug("🧠 Loading GLiNER model...")
-    model = GLiNER.from_pretrained("urchade/gliner_medium-v2.1")
-    log_debug("✅ GLiNER Model Loaded!")
+    log_debug("🧠 Loading GLiNER Small model into memory...")
+    # 🚀 UPGRADE 1: Smaller model = 2x speed with ~98% of the accuracy
+    model = GLiNER.from_pretrained("urchade/gliner_small-v2.1")
+    log_debug("✅ GLiNER Model Loaded and Ready for API Requests!")
 except Exception as e:
     log_debug(f"❌ Critical Error loading GLiNER: {e}")
     sys.exit(1)
 
-# 🎯 TARGET LABELS (Removed 'person' and 'address' to reduce noise)
 LABELS = ["nric number", "passport number", "phone number", "email address", "credit card number"]
 
-# These words trigger a "High Sensitivity" warning
 RISK_KEYWORDS = {
     "HIGH": ["STRICTLY CONFIDENTIAL", "TOP SECRET", "NON-DISCLOSURE AGREEMENT", "NDA", "DO NOT DISTRIBUTE"],
     "MEDIUM": ["INTERNAL USE ONLY", "PRIVATE", "DRAFT", "RESTRICTED"],
 }
 
-# --- 2. CLEANER ---
+REGEX_PATTERNS = {
+    "NRIC_REGEX": r"\b\d{6}-?\d{2}-?\d{4}\b",
+    "EMAIL_REGEX": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+    "PHONE_REGEX": r"\b(?:01[0-46-9]-?\d{7,8}|011-?\d{8})\b",
+    "CC_REGEX": r"\b(?:\d{4}[-\s]?){3}\d{4}\b",
+}
+
 def clean_text_minimal(text):
     text = re.sub(r'\[\d+\]', ' ', text)
     text = re.sub(r'\(\d{4}[a-z]?\)', ' ', text)
     text = re.sub(r'(?i)et\s+al\.?', ' ', text)
-    text = re.sub(r'(?i)doi\.org/\S+', ' ', text) # Remove DOIs early to stop false flags
+    text = re.sub(r'(?i)doi\.org/\S+', ' ', text)
     return text
 
-# --- 2. REGEX PATTERNS (The "Hard" Check) ---
-REGEX_PATTERNS = {
-    # Malaysia NRIC: 12 digits, optional hyphens
-    "NRIC_REGEX": r"\b\d{6}-?\d{2}-?\d{4}\b",
-    "EMAIL_REGEX": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-    "PHONE_REGEX": r"\b(?:01[0-46-9]-?\d{7,8}|011-?\d{8})\b",
-
-    # Credit Card: 13-19 digits, often grouped
-    "CC_REGEX": r"\b(?:\d{4}[-\s]?){3}\d{4}\b",
-}
-
 def calculate_risk_score(pii_count, found_keywords):
-    # Base Score (Perfectly Safe)
     score = 100
     classification = "PUBLIC"
 
-    # 1. Penalty for PII
     if pii_count > 0:
-        score -= (pii_count * 10) # -10 points per PII
+        score -= (pii_count * 10)
         classification = "SENSITIVE"
 
-    # 2. Penalty for Keywords
     for kw in found_keywords:
         if kw in RISK_KEYWORDS["HIGH"]:
             score -= 30
@@ -85,119 +70,127 @@ def calculate_risk_score(pii_count, found_keywords):
             score -= 15
             if classification != "RESTRICTED": classification = "INTERNAL"
 
-    # Cap the score (0 to 100)
     return max(0, score), classification
 
-def process_pdf(input_path, output_path):
-    doc = fitz.open(input_path)
-    final_findings = []
+# 🚀 UPGRADE 2: Define the FastAPI Server
+app = FastAPI(title="BCDS AI Microservice")
 
-    # Track unique findings to prevent duplicates
+class ScanRequest(BaseModel):
+    input_path: str
+    output_path: str
+
+@app.post("/scan")
+def process_pdf_route(req: ScanRequest):
+    log_progress(f"📥 Received API request for: {req.input_path}")
+
+    # 🛡️ Crash Protection
+    try:
+        doc = fitz.open(req.input_path)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Cannot open broken document: {str(e)}")
+
+    final_findings = []
     found_texts = set()
+    found_keywords_in_doc = set() # To track high-risk words
+    total_pages = len(doc)
 
     for page_num, page in enumerate(doc):
-        # 1. Get Text
+        log_progress(f"Scanning Page {page_num + 1} of {total_pages}...")
         text = page.get_text()
 
-        # --- A. REGEX SCANNING (Deterministic) ---
-        # We search for patterns BEFORE using AI
+        # --- Keyword Scanning for Risk Score ---
+        upper_text = text.upper()
+        for level, words in RISK_KEYWORDS.items():
+            for word in words:
+                if word in upper_text:
+                    found_keywords_in_doc.add(word)
+
+        # --- A. REGEX SCANNING (Unchanged) ---
         for label, pattern in REGEX_PATTERNS.items():
             matches = re.findall(pattern, text)
             for match in matches:
-                if match in found_texts: continue # Skip duplicates
+                if match in found_texts: continue
 
-                # Validation: NRIC must be 12 digits (excluding hyphens)
                 if "NRIC" in label:
                     digits = re.sub(r'\D', '', match)
                     if len(digits) != 12: continue
 
-                # Highlight & Record
                 hit_list = page.search_for(match)
                 for rect in hit_list:
-                    annot = page.add_redact_annot(rect)
-                    annot.update()
+                    page.add_redact_annot(rect).update()
 
-                # Add to findings
                 final_findings.append({
-                    "text": match,
-                    "type": label,
-                    "page": page_num + 1,
-                    "score": 1.0 # Regex is 100% confident
+                    "text": match, "type": label, "page": page_num + 1, "score": 1.0
                 })
-
                 found_texts.add(match)
 
-        # --- B. AI SCANNING (Contextual) ---
-        # Split into chunks for GLiNER
+        # --- B. AI BATCH SCANNING (The Speed Upgrade) ---
         chunks = [line for line in text.split('\n') if len(line.strip()) > 20]
+        clean_chunks = [clean_text_minimal(c) for c in chunks]
 
-        for chunk in chunks:
-            clean_chunk = clean_text_minimal(chunk)
+        # 🚀 UPGRADE 3: Matrix Batching (15 chunks at a time)
+        BATCH_SIZE = 15
+        batched_chunks = [clean_chunks[i:i + BATCH_SIZE] for i in range(0, len(clean_chunks), BATCH_SIZE)]
 
-            # Predict
-            entities = model.predict_entities(clean_chunk, LABELS, threshold=0.85) # Higher threshold
+        log_progress(f"Page {page_num + 1}: Running GLiNER AI in {len(batched_chunks)} batches...")
 
-            for ent in entities:
-                text_found = ent["text"]
-                label_found = ent["label"]
-                score = ent["score"]
+        for batch_index, batch in enumerate(batched_chunks):
+            # Process 15 sentences simultaneously!
+            batch_results = model.batch_predict_entities(batch, LABELS, threshold=0.85)
 
-                # 1. Reject if already found by Regex
-                if text_found in found_texts: continue
+            # Extract results for each sentence in the batch
+            for entities in batch_results:
+                for ent in entities:
+                    text_found = ent["text"]
+                    label_found = ent["label"]
+                    score = ent["score"]
 
-                # 2. Reject Academic Junk (DOI, ISSN, Volume)
-                upper_text = text_found.upper()
-                if "DOI" in upper_text or "ISSN" in upper_text or "VOL" in upper_text: continue
-                if text_found.startswith("10."): continue # DOIs start with 10.
+                    if text_found in found_texts: continue
 
-                # 3. Strict NRIC Check
-                if label_found == "nric number":
-                    # Must have at least 10 numbers
-                    digit_count = sum(c.isdigit() for c in text_found)
-                    if digit_count < 10: continue
-                    # Must NOT have dots (like 10.1108)
-                    if "." in text_found: continue
+                    upper_text_found = text_found.upper()
+                    if "DOI" in upper_text_found or "ISSN" in upper_text_found or "VOL" in upper_text_found: continue
+                    if text_found.startswith("10."): continue
 
-                # 4. Strict Email Check
-                if "email" in label_found and "@" not in text_found: continue
+                    if label_found == "nric number":
+                        if sum(c.isdigit() for c in text_found) < 10 or "." in text_found: continue
 
-                # 5. Strict Phone Check
-                if "phone" in label_found:
-                    digit_count = sum(c.isdigit() for c in text_found)
-                    if digit_count < 9: continue # Too short to be a phone number
+                    if "email" in label_found and "@" not in text_found: continue
 
-                # Check if we already found this via Regex (Optimization)
-                # (Simple check to avoid double-boxing)
-                already_found = any(f['text'] == text_found for f in final_findings)
-                if already_found: continue
+                    if "phone" in label_found and sum(c.isdigit() for c in text_found) < 9: continue
 
-                # Highlight
-                hit_list = page.search_for(text_found)
-                if hit_list:
-                    for rect in hit_list:
-                        # Use Redaction Annotation (Black Box) instead of Highlight
-                        annot = page.add_redact_annot(rect)
-                        annot.update()
+                    already_found = any(f['text'] == text_found for f in final_findings)
+                    if already_found: continue
 
-                    final_findings.append({
-                        "text": text_found,
-                        "type": label_found.upper(),
-                        "page": page_num + 1,
-                        "score": round(score, 2)
-                    })
-                    found_texts.add(text_found)
+                    hit_list = page.search_for(text_found)
+                    if hit_list:
+                        for rect in hit_list:
+                            page.add_redact_annot(rect).update()
 
-        # Apply all redactions for this page (Burns the black boxes in)
+                        final_findings.append({
+                            "text": text_found, "type": label_found.upper(),
+                            "page": page_num + 1, "score": round(score, 2)
+                        })
+                        found_texts.add(text_found)
+
         page.apply_redactions()
 
-    doc.save(output_path)
-    return final_findings
+    log_progress("Saving redacted PDF...")
+    doc.save(req.output_path)
+
+    # Calculate final metadata
+    risk_score, classification = calculate_risk_score(len(final_findings), found_keywords_in_doc)
+
+    # 🚀 UPGRADE 4: Return JSON payload directly to HTTP response
+    return {
+        "findings": final_findings,
+        "meta": {
+            "risk_score": risk_score,
+            "classification": classification,
+            "keywords_found": list(found_keywords_in_doc)
+        }
+    }
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3: sys.exit(1)
-    try:
-        results = process_pdf(sys.argv[1], sys.argv[2])
-        print(json.dumps(results))
-    except Exception as e:
-        log_debug(str(e))
-        print(json.dumps([]))
+    # Start the server on port 8000
+    log_debug("🚀 Starting FastAPI Server...")
+    uvicorn.run(app, host="127.0.0.1", port=8000)

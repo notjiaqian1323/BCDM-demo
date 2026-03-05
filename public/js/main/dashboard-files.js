@@ -1,11 +1,14 @@
 // --- FILE OPERATIONS ---
 console.info('📁 [FILES] dashboard-files.js loaded.');
 
+// Cache to hold file data for the NLP modal
+window.fileDataCache = {};
+
 async function loadFiles(driveId, targetBodyId) {
     console.log(`📥 [FILES] Fetching file list for drive: ${driveId} -> Target UI: ${targetBodyId}`);
     const listBody = document.getElementById(targetBodyId);
     try {
-        const res = await fetch(`http://127.0.0.1:5000/api/storage/files?drive=${driveId}`, {
+        const res = await fetch(`http://127.0.0.1:5002/api/storage/files?drive=${driveId}`, {
             headers: { 'x-auth-token': token }
         });
         if (!res.ok) {
@@ -21,20 +24,37 @@ async function loadFiles(driveId, targetBodyId) {
             return;
         }
 
-        listBody.innerHTML = files.map(file => ` 
-    <tr> 
-        <td><i class="fa-solid fa-file-lines"></i> ${file.fileName}</td> 
-        <td><i class="fa-solid fa-user-pen"></i> ${file.uploadedBy?.username || 'Unknown'}</td> 
-        <td>${(file.fileSize / 1024).toFixed(2)} KB</td> 
-        <td style="text-align: right;"> 
-            <button class="action-btn" style="background:var(--success)" onclick="downloadFile('${file._id}', '${file.fileName}', this)">
-                <i class="fa-solid fa-download"></i>
-            </button> 
-            <button class="action-btn" style="background:var(--danger)" onclick="deleteFile('${file._id}', '${driveId}', '${targetBodyId}')">
-                <i class="fa-solid fa-trash-can"></i>
-            </button> 
-        </td> 
-    </tr>`).join('');
+        // 🧠 NEW: Save files to cache for the NLP Modal
+        files.forEach(f => window.fileDataCache[f._id] = f);
+
+        listBody.innerHTML = files.map(file => {
+            // Check if this file has compliance data
+            const hasReport = file.complianceStatus === 'clean' || file.complianceStatus === 'redacted';
+            const reportBtnHtml = hasReport ? `
+                <button class="action-btn" style="background:var(--primary)" onclick="showNlpReport('${file._id}')" title="View Compliance Report">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </button>
+            ` : '';
+
+            return ` 
+            <tr> 
+                <td>
+                    <i class="fa-solid fa-file-lines" style="color: ${file.complianceStatus === 'redacted' ? '#ef4444' : 'inherit'}"></i> 
+                    ${file.fileName}
+                    ${file.complianceStatus === 'redacted' ? '<span style="font-size:0.7rem; background:#fee2e2; color:#ef4444; padding:2px 6px; border-radius:10px; margin-left:5px;">Redacted</span>' : ''}
+                </td> 
+                <td><i class="fa-solid fa-user-pen"></i> ${file.uploadedBy?.username || 'Unknown'}</td> 
+                <td>${(file.fileSize / 1024).toFixed(2)} KB</td> 
+                <td style="text-align: right; display: flex; justify-content: flex-end; gap: 5px;"> 
+                    ${reportBtnHtml} <button class="action-btn" style="background:var(--success)" onclick="downloadFile('${file._id}', '${file.fileName}', this)">
+                        <i class="fa-solid fa-download"></i>
+                    </button> 
+                    <button class="action-btn" style="background:var(--danger)" onclick="deleteFile('${file._id}', '${driveId}', '${targetBodyId}')">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button> 
+                </td> 
+            </tr>`;
+        }).join('');
     } catch (err) {
         console.error("💥 [FILES] File Load Error:", err);
     }
@@ -58,10 +78,20 @@ async function handleUpload(e, driveId) {
     btn.disabled = true;
 
     const formData = new FormData();
+    // 🧠 1. Append the NLP Checkbox state FIRST
+    const checkboxId = isWs ? 'scanPiiWorkspace' : 'scanPiiPersonal';
+    const scanCheckbox = document.getElementById(checkboxId);
+
+    if (scanCheckbox && scanCheckbox.checked) {
+        console.log("🛡️ [FILES] NLP Compliance Scan requested for this upload.");
+        formData.append('scanPii', 'true');
+    }
+
+    // 🧠 2. Append the file LAST
     formData.append('file', input.files[0]);
 
     try {
-        const res = await fetch(`http://127.0.0.1:5000/api/storage/upload?drive=${driveId}`, {
+        const res = await fetch(`http://127.0.0.1:5002/api/storage/upload?drive=${driveId}`, {
             method: 'POST',
             headers: { 'x-auth-token': token },
             body: formData
@@ -97,7 +127,7 @@ async function deleteFile(id, driveId, targetBodyId) {
     }
 
     try {
-        const res = await fetch(`http://127.0.0.1:5000/api/storage/files/${id}`, {
+        const res = await fetch(`http://127.0.0.1:5002/api/storage/files/${id}`, {
             method: 'DELETE',
             headers: { 'x-auth-token': token }
         });
@@ -125,7 +155,7 @@ async function downloadFile(id, name, btnElement) {
     btnElement.disabled = true;
 
     try {
-        const res = await fetch(`http://127.0.0.1:5001/api/storage/download/${id}`, {
+        const res = await fetch(`http://127.0.0.1:5002/api/storage/download/${id}`, {
             headers: { 'x-auth-token': token }
         });
 
@@ -153,3 +183,45 @@ async function downloadFile(id, name, btnElement) {
         btnElement.disabled = false;
     }
 }
+
+// Function to populate and show the NLP Report Modal
+window.showNlpReport = function(fileId) {
+    const file = window.fileDataCache[fileId];
+    if (!file) {
+        alert("Report data not found in cache. Please refresh the page.");
+        return;
+    }
+
+    // 1. Set Scores and Classification
+    document.getElementById('modalRiskScore').innerText = file.riskScore !== undefined ? file.riskScore : 100;
+
+    const classEl = document.getElementById('modalClassification');
+    classEl.innerText = file.classification || 'PUBLIC';
+
+    // Color coding the classification
+    if (file.classification === 'RESTRICTED') classEl.style.color = '#ef4444';
+    else if (file.classification === 'INTERNAL') classEl.style.color = '#f59e0b';
+    else classEl.style.color = '#10b981';
+
+    // 2. Set Keywords
+    const keywords = file.riskKeywords && file.riskKeywords.length > 0 ? file.riskKeywords.join(', ') : 'None detected';
+    document.getElementById('modalKeywords').innerText = keywords;
+
+    // 3. Set PII Redactions List
+    const piiList = document.getElementById('modalPiiList');
+    if (file.piiReport && file.piiReport.length > 0) {
+        piiList.innerHTML = file.piiReport.map(pii => `
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid var(--border); font-weight: 600;">${pii.type}</td>
+                <td style="padding: 8px; border-bottom: 1px solid var(--border); font-family: monospace;">${pii.text}</td>
+                <td style="padding: 8px; border-bottom: 1px solid var(--border); color: #ef4444;">Page ${pii.page}</td>
+            </tr>
+        `).join('');
+    } else {
+        piiList.innerHTML = '<tr><td style="padding: 15px; text-align: center; color: var(--text-muted);">No PII found in this document.</td></tr>';
+    }
+
+    // 4. Show the modal
+    // Note: Assuming your modal CSS allows 'flex' for centering. If it looks weird, change 'flex' to 'block'
+    document.getElementById('nlpReportModal').style.display = 'flex';
+};

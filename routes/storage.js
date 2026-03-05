@@ -6,6 +6,9 @@ const File = require('../models/File');
 const Activity = require('../models/Activity');
 const multer = require('multer');
 const AWS = require('aws-sdk');
+const Queue = require('bull');
+const { addLog } = require('../utils/logger');
+const nlpQueue = new Queue('nlp-scanning', process.env.REDIS_URL || 'redis://127.0.0.1:6379');
 
 const s3 = new AWS.S3({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -61,17 +64,21 @@ async function getTargetDrive(req) {
 router.post('/upload', [auth, upload.single('file')], async (req, res) => {
     console.log(`\n📤 [STORAGE API] POST /upload started by user ${req.user.id}`);
     if (!req.file) {
-        console.warn(`⚠️ [STORAGE API] Upload rejected: No file attached to request.`);
         return res.status(400).json({ msg: "No file provided" });
     }
+    // 🔍 DEBUG: See what Multer actually caught
+    console.log(`[DEBUG] req.body:`, req.body);
+
     const driveId = req.query.drive || 'personal';
+
+    // 🧠 NEW: Check if the frontend checkbox was ticked
+    const requiresNlp = req.body.scanPii === 'true';
+    console.log(`[DEBUG] Requires NLP? ${requiresNlp}`);
 
     try {
         const targetOwner = await getTargetDrive(req);
 
-        console.log(`[STORAGE API] Checking storage limits... Used: ${targetOwner.storageUsed}, Incoming: ${req.file.size}, Limit: ${targetOwner.storageLimit}`);
         if (targetOwner.storageUsed + req.file.size > targetOwner.storageLimit) {
-            console.warn(`⚠️ [STORAGE API] Upload rejected: Storage limit exceeded.`);
             return res.status(400).json({ msg: "Upload failed: Not enough storage space." });
         }
 
@@ -87,6 +94,8 @@ router.post('/upload', [auth, upload.single('file')], async (req, res) => {
         const s3Key = `${targetOwner.email}/${folderPath}/${Date.now()}-${req.file.originalname}`;
         console.log(`[STORAGE API] Uploading to AWS S3... Key: ${s3Key}`);
 
+        // (Side note: Your friend's button says "Encrypt", but right now this is uploading raw.
+        // We can add actual encryption here later if needed!)
         const s3Result = await s3.upload({
             Bucket: process.env.AWS_BUCKET_NAME,
             Key: s3Key,
@@ -102,14 +111,32 @@ router.post('/upload', [auth, upload.single('file')], async (req, res) => {
             fileName: req.file.originalname,
             fileSize: req.file.size,
             s3Url: s3Result.Location,
-            s3Key: s3Result.Key
+            s3Key: s3Result.Key,
+            // 🧠 NEW: Set initial compliance status based on checkbox
+            complianceStatus: requiresNlp ? 'scanning' : 'clean'
         });
 
         await newFile.save();
 
         targetOwner.storageUsed += req.file.size;
         await targetOwner.save();
-        console.log(`✅ [STORAGE API] DB updated. Upload complete.`);
+
+        // 📊 NEW: Log the basic upload to the Admin Dashboard
+        await addLog('UPLOAD', `User uploaded "${req.file.originalname}" to ${locationName}`, req);
+
+        // 🧠 NEW: Trigger the Python Worker if checkbox was ticked
+        if (requiresNlp) {
+            console.log(`[STORAGE API] 🛡️ NLP Scan requested! Queuing job...`);
+            await nlpQueue.add({
+                fileId: newFile._id,
+                s3Key: newFile.s3Key,
+                userId: req.user.id,
+                originalName: req.file.originalname
+            });
+
+            // Log to Admin Dashboard that AI is working
+            await addLog('WORKER', `NLP Scan queued for file: ${req.file.originalname}`, req);
+        }
 
         try {
             await new Activity({
@@ -118,14 +145,15 @@ router.post('/upload', [auth, upload.single('file')], async (req, res) => {
                 details: `Uploaded "${req.file.originalname}" to ${locationName}`
             }).save();
         } catch (logErr) {
-            console.error("⚠️ [STORAGE API] Activity logging failed (non-fatal):", logErr.message);
+            console.error("⚠️ [STORAGE API] Activity logging failed:", logErr.message);
         }
 
         return res.status(200).json({ msg: "Uploaded!", file: newFile });
 
     } catch (err) {
-        // THE CRITICAL FIX: Actually logging the error!
         console.error("💥 [STORAGE API] CRITICAL UPLOAD ERROR:", err);
+        // 📊 NEW: Log the error to the Admin Dashboard
+        await addLog('ERROR', `Upload failed for ${req.file?.originalname || 'unknown file'}`, req);
         return res.status(500).json({ msg: err.message || "Server Error during upload" });
     }
 });

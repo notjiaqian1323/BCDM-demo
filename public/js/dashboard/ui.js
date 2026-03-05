@@ -1,10 +1,74 @@
 // --- STATE TRACKING (To prevent "Ghost Button" glitch) ---
 let previousUserStates = {};
 let isFilterMode = false; // To track if we are viewing specific logs
+let trafficChartInstance = null;
 
+// --- 4. CHART RENDERER ---
+export function renderTrafficChart(chartData) {
+    const ctx = document.getElementById('trafficChart');
+    if (!ctx) return; // Failsafe if canvas is missing
+
+    // If the chart already exists, just update the data smoothly
+    if (trafficChartInstance) {
+        trafficChartInstance.data.labels = chartData.labels;
+        trafficChartInstance.data.datasets[0].data = chartData.dataPoints;
+        trafficChartInstance.update('none'); // 'none' disables the bouncy animation on every tick
+        return;
+    }
+
+    // If it's the first load, create the chart
+    trafficChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: chartData.labels,
+            datasets: [{
+                label: 'Security Events',
+                data: chartData.dataPoints,
+                borderColor: '#3b82f6', // Cyber blue
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4, // Gives it that smooth, modern curve
+                pointRadius: 3,
+                pointBackgroundColor: '#10b981' // Green dots
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false } // Hides the legend for a cleaner look
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#94a3b8', stepSize: 1 }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#94a3b8' }
+                }
+            }
+        }
+    });
+}
+
+
+// --- 1. LOGS RENDERER ---
 // --- 1. LOGS RENDERER ---
 export function renderLogs(logs) {
     const container = document.getElementById('live-feed-container');
+
+    // 🛑 THE FIX: Safeguard against non-array data
+    if (!Array.isArray(logs)) {
+        console.error("🚨 renderLogs Error: Expected an array, but got:", logs);
+
+        // Optionally display the error in the feed so you don't stare at a blank box
+        const errorText = logs.msg || logs.message || "Failed to parse stream data.";
+        container.innerHTML = `<div class="log-entry text-red">⚠️ Stream Error: ${errorText}</div>`;
+        return; // Stop the function here!
+    }
 
     // If empty or filtering
     if (logs.length === 0) {
@@ -13,13 +77,17 @@ export function renderLogs(logs) {
     }
 
     // Generate HTML
-    const newHtml = logs.map(log => `
+    const newHtml = logs.map(log => {
+        // Safe date parsing fallback
+        const timeString = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : "00:00:00";
+
+        return `
         <div class="log-entry">
-            <span class="log-time">[${new Date(log.timestamp).toLocaleTimeString()}]</span>
-            <span class="log-type ${getLogColor(log.type)}">${log.type}</span>
-            <span class="log-detail">${log.message}</span>
-        </div>
-    `).join('');
+            <span class="log-time">[${timeString}]</span>
+            <span class="log-type ${getLogColor(log.type)}">${log.type || 'UNKNOWN'}</span>
+            <span class="log-detail">${log.message || 'No details provided'}</span>
+        </div>`;
+    }).join('');
 
     // Only touch DOM if content changed (Performance)
     if (container.innerHTML !== newHtml) {
@@ -92,23 +160,31 @@ export function renderUserTable(users) {
     });
 }
 
-// --- 3. STATS RENDERER ---
+// --- STATS RENDERER (Cleaned up) ---
 export function renderStats(data) {
     document.getElementById('stat-total').innerText = data.total;
-    const riskEl = document.getElementById('stat-risk');
-    riskEl.innerText = data.risk;
+    // We removed the At-Risk elements, so we just ensure status says Operational
+    const statusEl = document.getElementById('stat-system-status');
+    if (statusEl.innerText !== "OPERATIONAL") statusEl.innerText = "OPERATIONAL";
+}
 
-    // Dynamic Color for At-Risk
-    if (data.risk === 0) {
-        riskEl.className = "hud-value text-green";
-        riskEl.closest('.hud-item').classList.remove('hud-alert');
-    } else {
-        riskEl.className = "hud-value text-red";
-        riskEl.closest('.hud-item').classList.add('hud-alert');
-    }
-
-    document.getElementById('stat-system-status').innerHTML = `<span class="pulse">●</span> OPERATIONAL`;
-    document.getElementById('stat-system-status').className = "hud-value text-green";
+// --- NEW: ALL USERS MODAL RENDERER ---
+export function renderAllUsersModal(users) {
+    const tbody = document.getElementById('all-users-list');
+    tbody.innerHTML = users.map(user => {
+        // Simple 1-line layout
+        return `
+        <tr>
+            <td style="font-family: monospace; color: #64748b;">${user._id.substring(0, 6)}</td>
+            <td style="font-weight: bold;">${user.username}</td>
+            <td>${user.email}</td>
+            <td>
+                <span class="${user.isBanned ? 'text-red' : 'text-green'}">
+                    ${user.isBanned ? 'BANNED' : 'ACTIVE'} (${user.trustScore})
+                </span>
+            </td>
+        </tr>`;
+    }).join('');
 }
 
 // --- HELPERS ---

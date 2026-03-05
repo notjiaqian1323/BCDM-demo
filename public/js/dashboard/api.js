@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:5000/api/admin';
+const API_BASE = 'http://localhost:5002/api/admin';
 const getAuthHeaders = () => ({ 'x-auth-token': localStorage.getItem('token') });
 
 // 1. STATS
@@ -15,13 +15,56 @@ export async function fetchUsers() {
     return res.json();
 }
 
+// --- 6. SYSTEM DIRECTORY ---
+export async function fetchAllUsers() {
+    const res = await fetch(`${API_BASE}/users`, { headers: getAuthHeaders() });
+
+    if (!res.ok) throw new Error("Failed to fetch user directory");
+
+    const data = await res.json();
+
+    // 🛡️ Armor: Ensure it always returns an array
+    if (!Array.isArray(data)) {
+        console.warn("API returned non-array data for users, defaulting to []");
+        return [];
+    }
+
+    return data;
+}
+
 // 3. LOGS (Live Feed)
 export async function fetchLogs(userId = null) {
-    // If userId is provided, hit the specific filter endpoint
     const url = userId ? `${API_BASE}/logs/${userId}` : `${API_BASE}/logs`;
     const res = await fetch(url, { headers: getAuthHeaders() });
+
     if (!res.ok) throw new Error("Logs Fetch Failed");
-    return res.json();
+
+    const data = await res.json();
+
+    // 🛡️ The Shield: If data is an object with no length, force it to be an empty array
+    if (!Array.isArray(data)) {
+        console.warn("API returned non-array data, defaulting to []");
+        return [];
+    }
+
+    return data;
+}
+
+// --- 5. TRAFFIC ANALYTICS ---
+export async function fetchTrafficData() {
+    // Fetches the grouped log data from the MongoDB aggregation route
+    const res = await fetch(`${API_BASE}/analytics/traffic`, { headers: getAuthHeaders() });
+
+    if (!res.ok) throw new Error("Traffic Fetch Failed");
+
+    const data = await res.json();
+
+    // 🛡️ Safe fallback just in case the DB returns nothing
+    if (!data.labels || !data.dataPoints) {
+        return { labels: [], dataPoints: [] };
+    }
+
+    return data;
 }
 
 // 4. ACTIONS (Ban/Unban)

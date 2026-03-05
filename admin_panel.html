@@ -6,6 +6,7 @@
     <title>BCDS Security Command Center</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./public/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -13,39 +14,65 @@
     <div class="brand">
         🛡️ BCDS <span class="text-blue">COMMAND CENTER</span>
     </div>
-    <div class="hud-stats">
-        <div class="hud-item">
-            <span class="hud-label">SYSTEM STATUS</span>
-            <span class="hud-value text-green" id="stat-system-status">
-                    <span class="pulse">●</span> CONNECTING...
-                </span>
+    <div class="hud-stats-compact">
+
+        <div class="hud-item-compact">
+            <span class="pulse text-green">●</span>
+            <span class="text-green font-bold" id="stat-system-status">OPERATIONAL</span>
         </div>
 
-        <div class="hud-item">
-            <span class="hud-label">TOTAL USERS</span>
-            <span class="hud-value" id="stat-total">-</span>
-        </div>
+        <button class="btn-action btn-compact" id="btn-view-users">
+            👥 <span id="stat-total">-</span> Users
+        </button>
 
-        <div class="hud-item hud-alert">
-            <span class="hud-label text-red">At-Risk ( < 50 )</span>
-            <span class="hud-value text-red" id="stat-risk">-</span>
-        </div>
-
-        <button class="btn-logout" id="btn-logout">
-            LOGOUT ADMIN
+        <button class="btn-logout btn-compact" id="btn-logout">
+            LOGOUT
         </button>
     </div>
 </header>
 
+<div id="users-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>👥 System Directory (All Users)</span>
+            <button id="btn-close-modal" class="btn-close">✖</button>
+        </div>
+        <div class="modal-body">
+            <table class="watchlist-table">
+                <thead>
+                <tr>
+                    <th>ID (Short)</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                </tr>
+                </thead>
+                <tbody id="all-users-list">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <div class="main-grid">
 
-    <div class="panel">
-        <div class="panel-header">
-            <span class="pulse-red">●</span> Live Security Event Log
-            <span style="font-size:0.7rem; opacity:0.7">Real-time Stream</span>
+    <div class="left-column">
+
+        <div class="panel" style="margin-bottom: 20px;">
+            <div class="panel-header">
+                📊 System Traffic (Last 24 Hours)
+            </div>
+            <div style="padding: 15px; height: 200px;">
+                <canvas id="trafficChart"></canvas>
+            </div>
         </div>
-        <div class="live-feed-container" id="live-feed-container">
-            <div class="log-entry text-secondary">Waiting for stream...</div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <span class="pulse-red">●</span> Live Security Event Log
+            </div>
+            <div class="live-feed-container" id="live-feed-container">
+            </div>
         </div>
     </div>
 

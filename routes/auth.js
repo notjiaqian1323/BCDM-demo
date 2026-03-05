@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
+const admin = require('../middleware/admin');
 const { addLog } = require('../utils/logger'); // ✅ Import Logger
 
 // --- 1. REGISTER ---
@@ -25,7 +26,7 @@ router.post('/register', async (req, res) => {
 
         const payload = { user: { id: user.id } };
         jwt.sign(payload, process.env.JWT_SECRET || 'mySuperSecretToken123', { expiresIn: 36000 }, (err, token) => {
-            if (err) throw err;
+            if (err) addLog('ERROR', `Registration Crashed for ${email}: ${err.message}`);
             res.json({ token });
         });
 
@@ -50,6 +51,12 @@ router.post('/login', async (req, res) => {
             // 📝 LOG: Login Failed (User Not Found)
             addLog('SECURITY', `Failed Login: ${email} (User not found)`);
             return res.status(400).json({ msg: 'Invalid Credentials' });
+        }
+
+        // --- 🛡️ THE REVERSE BOUNCER: BLOCK ADMINS ---
+        if (user.role === 'admin') {
+            addLog('SECURITY', `Admin ${user.email} attempted to use the standard user portal.`);
+            return res.status(403).json({ msg: 'Access Denied: Please use the Admin Portal to log in.' });
         }
 
         // --- 🛡️ BAN CHECK ---
@@ -82,12 +89,12 @@ router.post('/login', async (req, res) => {
         // 📝 LOG: Login Success
         addLog('AUTH', `User Login: ${user.username}. Role: [${user.role.toUpperCase()}]`);
 
-        // Terminal Log (Keep this for your debugging comfort)
-        const timestamp = new Date().toLocaleTimeString();
-        console.log(`[${timestamp}] 🔑 LOGIN SUCCESS: User '${user.email}'`);
+        // // Terminal Log (Keep this for your debugging comfort)
+        // const timestamp = new Date().toLocaleTimeString();
+        // console.log(`[${timestamp}] 🔑 LOGIN SUCCESS: User '${user.email}'`);
 
         jwt.sign(payload, process.env.JWT_SECRET || 'mySuperSecretToken123', { expiresIn: 36000 }, (err, token) => {
-            if (err) throw err;
+            if (err) addLog('ERROR', `Registration Crashed for ${email}: ${err.message}`);
             res.json({
                 token,
                 user: {
@@ -127,7 +134,7 @@ router.get('/user', auth, async (req, res) => {
 
 // --- 4. NEW: UI INTERACTION LOGGER ---
 // This endpoint receives "Ghost Signals" from the frontend (clicks, checkboxes)
-router.post('/log-ui', auth, (req, res) => {
+router.post('/log-ui', auth,  (req, res) => {
     const { action, details } = req.body;
 
     // 📝 LOG: Frontend Interaction

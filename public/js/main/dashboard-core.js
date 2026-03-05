@@ -32,7 +32,7 @@ window.onload = () => {
 async function fetchMasterData() {
     console.log('🔄 [CORE] Fetching master data from /api/subscription/status...');
     try {
-        const res = await fetch('http://127.0.0.1:5000/api/subscription/status', {
+        const res = await fetch('http://127.0.0.1:5002/api/subscription/status', {
             headers: { 'x-auth-token': token }
         });
 
