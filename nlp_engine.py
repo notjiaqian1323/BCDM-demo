@@ -37,7 +37,8 @@ LABELS = ["nric number", "passport number", "phone number", "email address", "cr
 
 RISK_KEYWORDS = {
     "HIGH": ["STRICTLY CONFIDENTIAL", "TOP SECRET", "NON-DISCLOSURE AGREEMENT", "NDA", "DO NOT DISTRIBUTE"],
-    "MEDIUM": ["INTERNAL USE ONLY", "PRIVATE", "DRAFT", "RESTRICTED"],
+    # 🛡️ THE FIX: Replaced "RESTRICTED" with specific context-aware phrases
+    "MEDIUM": ["INTERNAL USE ONLY", "PRIVATE", "DRAFT", "RESTRICTED DOCUMENT", "RESTRICTED ACCESS", "DISTRIBUTION RESTRICTED"],
 }
 
 REGEX_PATTERNS = {

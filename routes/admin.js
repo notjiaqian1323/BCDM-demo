@@ -174,17 +174,35 @@ router.get('/logs/:id', [auth, admin], async (req, res) => {
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ msg: 'User not found' });
 
-        // Filter the main memory logs for this specific user
-        // (We search for their username or ID in the log messages)
-        const allLogs = getLogs();
-        const userLogs = allLogs.filter(log =>
-            log.message.includes(user.username) ||
-            (log.details && log.details.includes && log.details.includes(user.username))
-        );
+        let allLogs = getLogs();
+
+        // 🛡️ DEFENSE 1: If getLogs() is async, wait for it to resolve
+        if (allLogs instanceof Promise) {
+            allLogs = await allLogs;
+        }
+
+        // 🛡️ DEFENSE 2: If it returned an object { logs: [...] }, extract the array
+        if (!Array.isArray(allLogs)) {
+            // Fallback to empty array if all parsing fails
+            allLogs = allLogs.logs || allLogs.data || [];
+        }
+
+        // Now we can safely filter!
+        // We also convert things to lowercase so "John" matches "john"
+        const usernameLower = user.username.toLowerCase();
+
+        const userLogs = allLogs.filter(log => {
+            if (!log) return false; // Skip null entries
+
+            const msg = log.message ? log.message.toLowerCase() : '';
+            const det = log.details ? log.details.toLowerCase() : '';
+
+            return msg.includes(usernameLower) || det.includes(usernameLower);
+        });
 
         res.json(userLogs);
     } catch (err) {
-        console.error(err);
+        console.error("💥 [ADMIN API] Error fetching user logs:", err);
         res.status(500).send('Server Error');
     }
 });
