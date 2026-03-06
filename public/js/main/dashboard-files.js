@@ -24,34 +24,64 @@ async function loadFiles(driveId, targetBodyId) {
             return;
         }
 
-        // 🧠 NEW: Save files to cache for the NLP Modal
+        // 🧠 Save files to cache for the NLP Modal
         files.forEach(f => window.fileDataCache[f._id] = f);
 
         listBody.innerHTML = files.map(file => {
-            // Check if this file has compliance data
-            const hasReport = file.complianceStatus === 'clean' || file.complianceStatus === 'redacted';
+            // --- UI STATE LOGIC ---
+            const isScanning = file.complianceStatus === 'scanning';
+            const isRejected = file.complianceStatus === 'rejected';
+            const isRedacted = file.complianceStatus === 'redacted';
+            const isQuarantined = isScanning || isRejected;
+            const hasReport = file.complianceStatus === 'clean' || isRedacted;
+
+            // 1. Status Badges next to file name
+            let statusBadge = '';
+            if (isRedacted) statusBadge = '<span style="font-size:0.7rem; background:#fee2e2; color:#ef4444; padding:2px 6px; border-radius:10px; margin-left:5px;">Redacted</span>';
+            else if (isScanning) statusBadge = '<span style="font-size:0.7rem; background:#e0f2fe; color:#0284c7; padding:2px 6px; border-radius:10px; margin-left:5px;"><i class="fa-solid fa-spinner fa-spin"></i> Scanning</span>';
+            else if (isRejected) statusBadge = '<span style="font-size:0.7rem; background:#fef2f2; color:#991b1b; padding:2px 6px; border-radius:10px; margin-left:5px;"><i class="fa-solid fa-ban"></i> Rejected</span>';
+
+            // 2. Report Button
             const reportBtnHtml = hasReport ? `
                 <button class="action-btn" style="background:var(--primary)" onclick="showNlpReport('${file._id}')" title="View Compliance Report">
                     <i class="fa-solid fa-shield-halved"></i>
                 </button>
             ` : '';
 
+            // 3. Download Button (Locked if Scanning or Rejected)
+            const downloadBtnHtml = `
+                <button class="action-btn" 
+                    style="background: ${isQuarantined ? '#cbd5e1' : 'var(--success)'}; cursor: ${isQuarantined ? 'not-allowed' : 'pointer'};" 
+                    onclick="${isQuarantined ? `alert('Download disabled: File is ${isScanning ? 'currently scanning' : 'rejected for policy violations'}.')` : `downloadFile('${file._id}', '${file.fileName}', this)`}"
+                    ${isQuarantined ? 'disabled' : ''} title="Download File">
+                    <i class="fa-solid ${isScanning ? 'fa-hourglass-half' : (isRejected ? 'fa-lock' : 'fa-download')}"></i>
+                </button>
+            `;
+
+            // 4. Delete Button (Locked ONLY if Scanning)
+            // *Note: We allow deleting 'rejected' files so users can clean up their dashboard
+            const deleteBtnHtml = `
+                <button class="action-btn" 
+                    style="background: ${isScanning ? '#cbd5e1' : 'var(--danger)'}; cursor: ${isScanning ? 'not-allowed' : 'pointer'};" 
+                    onclick="${isScanning ? `alert('Please wait for the AI scan to finish before deleting.')` : `deleteFile('${file._id}', '${driveId}', '${targetBodyId}')`}"
+                    ${isScanning ? 'disabled' : ''} title="Delete File">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            `;
+
             return ` 
             <tr> 
                 <td>
-                    <i class="fa-solid fa-file-lines" style="color: ${file.complianceStatus === 'redacted' ? '#ef4444' : 'inherit'}"></i> 
+                    <i class="fa-solid fa-file-lines" style="color: ${isRedacted || isRejected ? '#ef4444' : 'inherit'}"></i> 
                     ${file.fileName}
-                    ${file.complianceStatus === 'redacted' ? '<span style="font-size:0.7rem; background:#fee2e2; color:#ef4444; padding:2px 6px; border-radius:10px; margin-left:5px;">Redacted</span>' : ''}
+                    ${statusBadge}
                 </td> 
                 <td><i class="fa-solid fa-user-pen"></i> ${file.uploadedBy?.username || 'Unknown'}</td> 
                 <td>${(file.fileSize / 1024).toFixed(2)} KB</td> 
                 <td style="text-align: right; display: flex; justify-content: flex-end; gap: 5px;"> 
-                    ${reportBtnHtml} <button class="action-btn" style="background:var(--success)" onclick="downloadFile('${file._id}', '${file.fileName}', this)">
-                        <i class="fa-solid fa-download"></i>
-                    </button> 
-                    <button class="action-btn" style="background:var(--danger)" onclick="deleteFile('${file._id}', '${driveId}', '${targetBodyId}')">
-                        <i class="fa-solid fa-trash-can"></i>
-                    </button> 
+                    ${reportBtnHtml}
+                    ${downloadBtnHtml}
+                    ${deleteBtnHtml}
                 </td> 
             </tr>`;
         }).join('');

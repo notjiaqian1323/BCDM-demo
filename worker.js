@@ -142,21 +142,29 @@ nlpQueue.process(async (job) => {
             await logToAdmin('WARNING', `⚠️ PII Redacted. User penalized -${penalty}.`);
 
             // Upload Redacted File
+            // Upload Redacted File
             if (fs.existsSync(tempOutput)) {
                 const redactedBuffer = fs.readFileSync(tempOutput);
-                const encryptedRedacted = encryptBuffer(redactedBuffer);
 
-                // Safe replace logic whether it's .enc, .pdf, or something else
+                // 🛑 CRITICAL FIX: If you aren't encrypting the initial upload,
+                // do not encrypt the redacted one, or it will download as garbage bytes!
+                // const encryptedRedacted = encryptBuffer(redactedBuffer);
+
                 const newS3Key = s3Key.includes('.') ? s3Key.replace(/\.[^/.]+$/, "_redacted$&") : s3Key + '_redacted';
 
                 await s3.upload({
                     Bucket: process.env.AWS_BUCKET_NAME,
                     Key: newS3Key,
-                    Body: encryptedRedacted
+                    Body: redactedBuffer // <--- Using the raw buffer instead of encrypted
                 }).promise();
+
+                // 🗑️ CRITICAL S3 CLEANUP: Delete the original dangerous file!
+                logWorker(`Job ${job.id}: 🧹 Deleting original unredacted file from S3...`);
+                await s3.deleteObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: s3Key }).promise();
 
                 await File.findByIdAndUpdate(fileId, {
                     complianceStatus: 'redacted',
+                    s3Key: newS3Key, // 🛡️ OVERWRITE the main s3Key so the download route gets the safe file!
                     redactedS3Key: newS3Key,
                     piiReport: report,
                     riskScore: riskMeta.risk_score,

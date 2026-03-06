@@ -102,8 +102,13 @@ def process_pdf_route(req: ScanRequest):
         upper_text = text.upper()
         for level, words in RISK_KEYWORDS.items():
             for word in words:
-                if word in upper_text:
+                # 🛡️ THE FIX: Use word boundaries so "NDA" doesn't flag "STANDARD"
+                # re.escape ensures special characters in your keywords don't break the regex
+                pattern = r'\b' + re.escape(word) + r'\b'
+                if re.search(pattern, upper_text):
                     found_keywords_in_doc.add(word)
+                    # 📢 THE AUDIT LOG: Print exactly what was found
+                    log_progress(f"🚨 AUDIT ALERT: Found {level} risk keyword: '{word}' on page {page_num + 1}")
 
         # --- A. REGEX SCANNING (Unchanged) ---
         for label, pattern in REGEX_PATTERNS.items():
