@@ -15,18 +15,19 @@
         🛡️ BCDS <span class="text-blue">COMMAND CENTER</span>
     </div>
     <div class="hud-stats-compact">
-
         <div class="hud-item-compact">
             <span class="pulse text-green">●</span>
             <span class="text-green font-bold" id="stat-system-status">OPERATIONAL</span>
         </div>
 
-        <button class="btn-action btn-compact" id="btn-view-users">
-            👥 <span id="stat-total">-</span> Users
+        <button class="btn-action btn-compact" id="btn-view-users" style="display: flex; gap: 8px; align-items: center;" title="View User Directory">
+            <i class="fa-solid fa-chart-line text-blue"></i>
+            <span id="stat-trend" class="text-green font-bold">+5.2%</span>
+            <span style="color: var(--text-secondary);">Active Trend</span>
         </button>
 
-        <button class="btn-logout btn-compact" id="btn-logout">
-            LOGOUT
+        <button class="btn-logout-sleek" id="btn-logout">
+            <i class="fa-solid fa-power-off"></i> LOGOUT
         </button>
     </div>
 </header>
@@ -71,6 +72,20 @@
             <div class="panel-header">
                 <span class="pulse-red">●</span> Live Security Event Log
             </div>
+            <div class="panel-toolbar">
+                <div class="filter-group">
+                    <i class="fa-solid fa-magnifying-glass text-secondary"></i>
+                    <input type="text" id="logSearchInput" class="filter-input" placeholder="Search logs...">
+                </div>
+
+                <div class="filter-group">
+                    <span class="hud-label" style="margin-bottom: 0;">Sort By:</span>
+                    <select id="logSortSelect" class="filter-select">
+                        <option value="recent">Most Recent (Default)</option>
+                        <option value="oldest">Oldest First</option>
+                    </select>
+                </div>
+            </div>
             <div class="live-feed-container" id="live-feed-container">
             </div>
         </div>
@@ -79,6 +94,22 @@
     <div class="panel">
         <div class="panel-header">
             ⚠️ High-Risk Targets (Probation)
+        </div>
+        <div class="panel-toolbar">
+            <div class="filter-group">
+                <i class="fa-solid fa-magnifying-glass text-secondary"></i>
+                <input type="text" id="userSearchInput" class="filter-input" placeholder="Search ID or Username...">
+            </div>
+
+            <div class="filter-group">
+                <span class="hud-label" style="margin-bottom: 0;">Sort By:</span>
+                <select id="userSortSelect" class="filter-select">
+                    <option value="risk-high">Highest Risk (Default)</option>
+                    <option value="risk-low">Lowest Risk</option>
+                    <option value="recent">Most Recent</option>
+                    <option value="status">Status (Banned First)</option>
+                </select>
+            </div>
         </div>
         <table class="watchlist-table">
             <thead>
@@ -91,12 +122,6 @@
             <tbody id="user-table-body">
             </tbody>
         </table>
-
-        <div class="panel-footer">
-            <button class="btn-action" style="width:100%" id="btn-view-ledger">
-                📄 View Full Blockchain Ledger
-            </button>
-        </div>
     </div>
 </div>
 

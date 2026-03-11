@@ -1,22 +1,20 @@
-// --- STATE TRACKING (To prevent "Ghost Button" glitch) ---
+// --- STATE TRACKING ---
 let previousUserStates = {};
-let isFilterMode = false; // To track if we are viewing specific logs
+let isFilterMode = false;
 let trafficChartInstance = null;
 
 // --- 4. CHART RENDERER ---
 export function renderTrafficChart(chartData) {
     const ctx = document.getElementById('trafficChart');
-    if (!ctx) return; // Failsafe if canvas is missing
+    if (!ctx) return;
 
-    // If the chart already exists, just update the data smoothly
     if (trafficChartInstance) {
         trafficChartInstance.data.labels = chartData.labels;
         trafficChartInstance.data.datasets[0].data = chartData.dataPoints;
-        trafficChartInstance.update('none'); // 'none' disables the bouncy animation on every tick
+        trafficChartInstance.update('none');
         return;
     }
 
-    // If it's the first load, create the chart
     trafficChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
@@ -24,76 +22,63 @@ export function renderTrafficChart(chartData) {
             datasets: [{
                 label: 'Security Events',
                 data: chartData.dataPoints,
-                borderColor: '#3b82f6', // Cyber blue
+                borderColor: '#3b82f6',
                 backgroundColor: 'rgba(59, 130, 246, 0.1)',
                 borderWidth: 2,
                 fill: true,
-                tension: 0.4, // Gives it that smooth, modern curve
+                tension: 0.4,
                 pointRadius: 3,
-                pointBackgroundColor: '#10b981' // Green dots
+                pointBackgroundColor: '#10b981'
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false } // Hides the legend for a cleaner look
-            },
+            plugins: { legend: { display: false } },
             scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#94a3b8', stepSize: 1 }
-                },
-                x: {
-                    grid: { display: false },
-                    ticks: { color: '#94a3b8' }
-                }
+                y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', stepSize: 1 } },
+                x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
             }
         }
     });
 }
 
-
-// --- 1. LOGS RENDERER ---
 // --- 1. LOGS RENDERER ---
 export function renderLogs(logs) {
     const container = document.getElementById('live-feed-container');
 
-    // 🛑 THE FIX: Safeguard against non-array data
     if (!Array.isArray(logs)) {
         console.error("🚨 renderLogs Error: Expected an array, but got:", logs);
-
-        // Optionally display the error in the feed so you don't stare at a blank box
         const errorText = logs.msg || logs.message || "Failed to parse stream data.";
         container.innerHTML = `<div class="log-entry text-red">⚠️ Stream Error: ${errorText}</div>`;
-        return; // Stop the function here!
+        return;
     }
 
-    // If empty or filtering
     if (logs.length === 0) {
         if (!isFilterMode) container.innerHTML = '<div class="log-entry text-secondary">Waiting for stream...</div>';
         return;
     }
 
-    // Generate HTML
+    // 🛠️ THE FIX: Correctly defining variables before injecting into HTML
     const newHtml = logs.map(log => {
-        // Safe date parsing fallback
-        const timeString = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : "00:00:00";
+        const time = log.timestamp || log.date ? new Date(log.timestamp || log.date).toLocaleTimeString() : "00:00:00";
+        const typeClass = getLogColor(log.type);
+        const displayType = log.type || 'INFO';
+        const displayMsg = log.message || log.details || '';
 
         return `
-        <div class="log-entry">
-            <span class="log-time">[${timeString}]</span>
-            <span class="log-type ${getLogColor(log.type)}">${log.type || 'UNKNOWN'}</span>
-            <span class="log-detail">${log.message || 'No details provided'}</span>
-        </div>`;
+            <div class="log-entry">
+                <span class="log-time">${time}</span>
+                <span class="log-type ${typeClass}">${displayType}</span>
+                <div class="log-message-container">
+                    <span class="log-message">${displayMsg}</span>
+                </div>
+            </div>
+        `;
     }).join('');
 
-    // Only touch DOM if content changed (Performance)
     if (container.innerHTML !== newHtml) {
         container.innerHTML = newHtml;
-        // Feature: Auto-Scroll to bottom
-        container.scrollTop = container.scrollHeight;
     }
 }
 
@@ -102,24 +87,21 @@ export function setLogFilterMode(active, userName = "") {
     const header = document.querySelector('.panel-header .pulse-red').nextSibling;
     if (active) {
         header.textContent = ` 🔍 Filtering: ${userName}`;
-        // Pause auto-refreshing logs in main.js logic if needed,
-        // or just let the API fetch the specific user logs.
     } else {
         header.textContent = ` Live Security Event Log`;
     }
 }
 
-// --- 2. USER TABLE RENDERER (The "Ghost Button" Fix) ---
+// --- 2. USER TABLE RENDERER ---
 export function renderUserTable(users) {
     const tbody = document.getElementById('user-table-body');
 
     users.forEach(user => {
         const rowId = `row-${user._id}`;
-        const stateKey = `${user.trustScore}-${user.isBanned}`; // Unique signature
+        const stateKey = `${user.trustScore}-${user.isBanned}`;
 
         let row = document.getElementById(rowId);
 
-        // A. CREATE ROW (If new)
         if (!row) {
             row = document.createElement('tr');
             row.id = rowId;
@@ -145,34 +127,42 @@ export function renderUserTable(users) {
             tbody.appendChild(row);
             previousUserStates[user._id] = stateKey;
         }
-        // B. UPDATE ROW (Only if changed)
         else if (previousUserStates[user._id] !== stateKey) {
-            // Update Score
             row.querySelector('.score-cell').innerHTML = getScoreBadge(user.trustScore);
-
-            // Update Freeze Button
             const btn = row.querySelector('[data-action="ban"]');
             btn.className = `btn-action ${user.isBanned ? 'btn-unfreeze' : 'btn-freeze'}`;
             btn.innerText = user.isBanned ? 'UNFREEZE' : 'FREEZE';
-
             previousUserStates[user._id] = stateKey;
         }
     });
 }
 
-// --- STATS RENDERER (Cleaned up) ---
+// --- STATS RENDERER ---
 export function renderStats(data) {
-    document.getElementById('stat-total').innerText = data.total;
-    // We removed the At-Risk elements, so we just ensure status says Operational
+    // Total Users
+    const totalEl = document.getElementById('stat-total');
+    if (totalEl) totalEl.innerText = data.total || 0;
+
+    // 📈 NEW: Render the Trend UI
+    const trendEl = document.getElementById('stat-trend');
+    if (trendEl && data.trend !== undefined) {
+        const trendVal = parseFloat(data.trend);
+        trendEl.innerText = trendVal >= 0 ? `+${trendVal}%` : `${trendVal}%`;
+
+        // Dynamically color the text based on positive/negative growth
+        trendEl.className = trendVal >= 0 ? 'text-green font-bold' : 'text-red font-bold';
+    }
+
     const statusEl = document.getElementById('stat-system-status');
-    if (statusEl.innerText !== "OPERATIONAL") statusEl.innerText = "OPERATIONAL";
+    if (statusEl && statusEl.innerText !== "OPERATIONAL") {
+        statusEl.innerText = "OPERATIONAL";
+    }
 }
 
 // --- NEW: ALL USERS MODAL RENDERER ---
 export function renderAllUsersModal(users) {
     const tbody = document.getElementById('all-users-list');
     tbody.innerHTML = users.map(user => {
-        // Simple 1-line layout
         return `
         <tr>
             <td style="font-family: monospace; color: #64748b;">${user._id.substring(0, 6)}</td>
@@ -182,6 +172,12 @@ export function renderAllUsersModal(users) {
                 <span class="${user.isBanned ? 'text-red' : 'text-green'}">
                     ${user.isBanned ? 'BANNED' : 'ACTIVE'} (${user.trustScore})
                 </span>
+            </td>
+            <td style="text-align: right;">
+                <button class="action-btn" style="background: var(--primary); padding: 5px 10px;" 
+                        onclick="window.location.href='../user_profile.html?id=${user._id}'" title="View Full Profile">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
             </td>
         </tr>`;
     }).join('');
