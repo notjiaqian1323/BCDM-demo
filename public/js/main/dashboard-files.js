@@ -1,4 +1,3 @@
-// --- FILE OPERATIONS ---
 console.info('📁 [FILES] dashboard-files.js loaded.');
 
 // Cache to hold file data for the NLP modal
@@ -8,7 +7,7 @@ async function loadFiles(driveId, targetBodyId) {
     console.log(`📥 [FILES] Fetching file list for drive: ${driveId} -> Target UI: ${targetBodyId}`);
     const listBody = document.getElementById(targetBodyId);
     try {
-        const res = await fetch(`http://127.0.0.1:5002/api/storage/files?drive=${driveId}`, {
+        const res = await fetch(`http://127.0.0.1:5001/api/storage/files?drive=${driveId}`, {
             headers: { 'x-auth-token': token }
         });
         if (!res.ok) {
@@ -121,7 +120,7 @@ async function handleUpload(e, driveId) {
     formData.append('file', input.files[0]);
 
     try {
-        const res = await fetch(`http://127.0.0.1:5002/api/storage/upload?drive=${driveId}`, {
+        const res = await fetch(`http://127.0.0.1:5001/api/storage/upload?drive=${driveId}`, {
             method: 'POST',
             headers: { 'x-auth-token': token },
             body: formData
@@ -157,11 +156,10 @@ async function deleteFile(id, driveId, targetBodyId) {
     }
 
     try {
-        const res = await fetch(`http://127.0.0.1:5002/api/storage/files/${id}`, {
+        const res = await fetch(`http://127.0.0.1:5001/api/storage/files/${id}`, {
             method: 'DELETE',
             headers: { 'x-auth-token': token }
         });
-
         if (res.ok) {
             console.log('✅ [FILES] Delete successful!');
             alert("✅ Remove Success: File purged from cloud storage");
@@ -169,7 +167,6 @@ async function deleteFile(id, driveId, targetBodyId) {
             await fetchMasterData();
         } else {
             const data = await res.json();
-            console.error('❌ [FILES] Delete failed on server:', data);
             alert("❌ Delete Failed: " + (data.msg || "Unknown error"));
         }
     } catch (err) {
@@ -185,7 +182,7 @@ async function downloadFile(id, name, btnElement) {
     btnElement.disabled = true;
 
     try {
-        const res = await fetch(`http://127.0.0.1:5002/api/storage/download/${id}`, {
+        const res = await fetch(`http://127.0.0.1:5001/api/storage/download/${id}`, {
             headers: { 'x-auth-token': token }
         });
 
@@ -255,3 +252,35 @@ window.showNlpReport = function(fileId) {
     // Note: Assuming your modal CSS allows 'flex' for centering. If it looks weird, change 'flex' to 'block'
     document.getElementById('nlpReportModal').style.display = 'flex';
 };
+
+async function downloadComplianceReport() {
+    const start = document.getElementById('auditStartDate').value;
+    const end = document.getElementById('auditEndDate').value;
+
+    if (!start || !end) return alert("Please select both a Start Date and an End Date.");
+    if (new Date(start) > new Date(end)) return alert("Start Date cannot be after the End Date.");
+
+    try {
+        const queryStr = `?startDate=${start}&endDate=${end}`;
+        const res = await fetch(`http://127.0.0.1:5001/api/reports/compliance-csv${queryStr}`, {
+            headers: authHeaders
+        });
+
+        if (res.status === 403) {
+            return alert("🔒 Access Denied: Compliance Audit Exports are strictly restricted to Enterprise plan users.");
+        }
+        if (!res.ok) throw new Error("Server error generating report.");
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `BCDS_Audit_${start}_to_${end}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    } catch (err) {
+        alert("❌ Failed to download report. Ensure server is running.");
+    }
+}
