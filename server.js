@@ -1,44 +1,15 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const path = require('path');
 require('dotenv').config();
 
 const app = express();
 
-// --- 1. MIDDLEWARE ---
-app.use(express.json());
-app.use(cors());
+// --- 1. STRIPE WEBHOOK (MUST BE BEFORE express.json()) ---
 
-// Serve "public" folder if you have shared assets (Optional)
-//app.use('/public', express.static(path.join(__dirname, 'public')));
-
-// --- 2. DATABASE CONNECTION ---
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("✅ MongoDB Connected"))
-    .catch(err => console.error("❌ MongoDB Connection Error:", err));
-
-// --- 3. API ROUTES ---
-// Auth: Login, Register, User Info (with Trust Score)
-app.use('/api/auth', require('./routes/auth'));
-// Storage: Upload, Download, Share, Delete (Triggers Worker)
-app.use('/api/storage', require('./routes/storage'));
-// Blockchain: Immutable Log of Uploads & Penalties
-app.use('/api/blockchain', require('./routes/blockchain'));
-// Subscription: Manage Plan Limits (Basic/Premium)
-app.use('/api/subscription', require('./routes/subscription'));
-// Admin: Manage Users, Monitoring, Banning
-app.use('/api/admin', require('./routes/admin'));
-
-// --- 4. GLOBAL ERROR HANDLER ---
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ msg: 'Something went wrong!', error: err.message });
-});
-
-app.post('/api/subscription/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+app.post('/api/subscription/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
     let event;
 
     try {
@@ -51,25 +22,34 @@ app.post('/api/subscription/webhook', express.raw({type: 'application/json'}), a
     const User = require('./models/User');
     const Activity = require('./models/Activity');
 
+    // In server.js - Webhook handler
     if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
+
+        // Use the client_reference_id we passed during checkout creation
         const userId = session.client_reference_id;
         const purchasedPlan = session.metadata.planName;
 
         const user = await User.findById(userId);
         if (user) {
-            user.stripeCustomerId = session.customer;
             user.package = purchasedPlan;
-            // Precise byte calculation
-            user.storageLimit = purchasedPlan === 'Enterprise' ? 500 * 1024 * 1024 * 1024 : 100 * 1024 * 1024 * 1024;
 
+            // Match the byte logic in your User.js model
+            if (purchasedPlan === 'Premium') {
+                user.storageLimit = 100 * 1024 * 1024 * 1024; // 100GB
+            } else if (purchasedPlan === 'Enterprise') {
+                user.storageLimit = 500 * 1024 * 1024 * 1024; // 500GB
+            }
+
+            user.stripeCustomerId = session.customer;
             await user.save();
+
+            // Create the activity log
             await new Activity({
                 userId: user._id,
                 type: 'PAYMENT_SUCCESS',
                 details: `Upgraded to ${purchasedPlan}`
             }).save();
-            console.log(`⭐ Plan updated for user: ${user.email}`);
         }
     }
 
@@ -84,12 +64,31 @@ app.post('/api/subscription/webhook', express.raw({type: 'application/json'}), a
         }
     }
 
-    res.json({received: true});
+    res.json({ received: true });
 });
 
-// --- 5. START SERVER ---
-const PORT = process.env.PORT || 5002;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📡 API Access: http://localhost:${PORT}/api/`);
-});
+// --- 2. MIDDLEWARE ---
+app.use(express.json());
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token']
+}));
+
+// --- 3. ROUTES (PATH CORRECTIONS) ---
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/storage', require('./routes/storage'));
+app.use('/api/blockchain', require('./routes/blockchain'));
+app.use('/api/subscription', require('./routes/subscription'));
+app.use('/api/activity', require('./routes/activity'));
+app.use('/api/reports', require('./routes/reports'));
+
+// --- 4. DATABASE CONNECTION ---
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log("✅ MongoDB Connected"))
+    .catch(err => {
+        console.error("❌ MongoDB Connection Error:", err.message);
+    });
+
+const PORT = process.env.PORT || 5001;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
