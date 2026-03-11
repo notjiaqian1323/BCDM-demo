@@ -1,9 +1,13 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
+// --- 1. MIDDLEWARE ---
+app.use(express.json());
+app.use(cors());
 
 // --- 1. STRIPE WEBHOOK (MUST BE BEFORE express.json()) ---
 
@@ -50,6 +54,7 @@ app.post('/api/subscription/webhook', express.raw({ type: 'application/json' }),
                 type: 'PAYMENT_SUCCESS',
                 details: `Upgraded to ${purchasedPlan}`
             }).save();
+            console.log(`⭐ Plan updated for user: ${user.email}`);
         }
     }
 
@@ -82,6 +87,12 @@ app.use('/api/blockchain', require('./routes/blockchain'));
 app.use('/api/subscription', require('./routes/subscription'));
 app.use('/api/activity', require('./routes/activity'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/admin', require('./routes/admin'));
+// --- 4. GLOBAL ERROR HANDLER ---
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({ msg: 'Something went wrong!', error: err.message });
+});
 
 // --- 4. DATABASE CONNECTION ---
 mongoose.connect(process.env.MONGO_URI)

@@ -121,6 +121,12 @@ function closeWorkspaceModal() {
     document.getElementById('createWorkspaceModal').style.display = 'none';
 }
 
+function logout() {
+    console.log('👋 [CORE] Logging out. Clearing token and redirecting...');
+    localStorage.removeItem('token');
+    window.location.href = 'login.html';
+}
+
 // --- RENDER FUNCTIONS ---
 function renderBilling(data) {
     const subStatus = document.getElementById('subStatus');

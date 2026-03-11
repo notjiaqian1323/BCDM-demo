@@ -59,67 +59,6 @@
         <div id="error-message" class="error-msg"></div>
     </div>
 
-    <script>
-        // Redirect if already logged in
-        if (localStorage.getItem('token')) {
-            window.location.href = 'dashboard.html';
-        }
-
-        function switchForm(form) {
-            document.getElementById('error-message').innerText = '';
-            if (form === 'login') {
-                document.getElementById('login-form').style.display = 'block';
-                document.getElementById('register-form').style.display = 'none';
-                document.getElementById('btn-login').classList.add('active');
-                document.getElementById('btn-register').classList.remove('active');
-            } else {
-                document.getElementById('login-form').style.display = 'none';
-                document.getElementById('register-form').style.display = 'block';
-                document.getElementById('btn-login').classList.remove('active');
-                document.getElementById('btn-register').classList.add('active');
-            }
-        }
-
-        async function handleAuth(e, type) {
-            e.preventDefault();
-            const errorDiv = document.getElementById('error-message');
-            errorDiv.innerText = '';
-            
-            const submitBtn = type === 'login' ? document.getElementById('login-submit') : document.getElementById('reg-submit');
-            const originalText = submitBtn.innerText;
-            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
-            submitBtn.disabled = true;
-
-            const endpoint = type === 'login' ? '/api/auth/login' : '/api/auth/register';
-            
-            const payload = type === 'login' 
-                ? { email: document.getElementById('login-email').value, password: document.getElementById('login-password').value }
-                : { username: document.getElementById('reg-username').value, email: document.getElementById('reg-email').value, password: document.getElementById('reg-password').value };
-
-            try {
-                const res = await fetch(`http://127.0.0.1:5001${endpoint}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const data = await res.json();
-
-                if (res.ok) {
-                    // Save token and redirect
-                    localStorage.setItem('token', data.token);
-                    window.location.href = 'dashboard.html';
-                } else {
-                    errorDiv.innerText = data.msg || 'Authentication failed';
-                    submitBtn.innerHTML = originalText;
-                    submitBtn.disabled = false;
-                }
-            } catch (err) {
-                errorDiv.innerText = 'Network error. Is your server running?';
-                submitBtn.innerHTML = originalText;
-                submitBtn.disabled = false;
-            }
-        }
-    </script>
+<script src="./public/js/main/auth.js"></script>
 </body>
 </html>

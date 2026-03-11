@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:5002/api/admin';
+const API_BASE = 'http://localhost:5001/api/admin';
 const getAuthHeaders = () => ({ 'x-auth-token': localStorage.getItem('token') });
 
 // 1. STATS (Upgraded with local Trend Calculation)

@@ -2,10 +2,12 @@
   "dependencies": {
     "aws-sdk": "^2.1693.0",
     "bcryptjs": "^3.0.3",
+    "bull": "^4.16.5",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "ethers": "^6.16.0",
     "express": "^5.2.1",
+    "geoip-lite": "^1.4.10",
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.1.0",
     "mongoose": "^9.2.3",
