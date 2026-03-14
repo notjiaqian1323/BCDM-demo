@@ -8,6 +8,12 @@ const auth = require('../middleware/auth');
 const admin = require('../middleware/admin'); // The middleware we created earlier
 const { addLog, getLogs } = require('../utils/logger');
 const Log = require('../models/Log');
+// 1. IMPORTANT: Make sure to import the safety enums at the top of your file!
+const { VertexAI, HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+// 🧠 AI PROFILE CACHE (Saves API Tokens!)
+// Stores data as: { "userId": { summary: "...", logCount: 42 } }
+const aiProfileCache = {};
+
 
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
@@ -272,6 +278,268 @@ router.get('/analytics/traffic', auth, async (req, res) => {
     } catch (err) {
         console.error("Traffic Analytics Error:", err);
         res.status(500).json({ labels: [], dataPoints: [] });
+    }
+});
+
+// --- 🤖 AI SECURITY SWEEP ROUTE ---
+router.post('/ai-sweep', [auth, admin], async (req, res) => {
+    try {
+        const vertex_ai = new VertexAI({
+            project: process.env.GCP_PROJECT_ID || 'your-google-cloud-project-id',
+            location: process.env.GCP_LOCATION || 'us-central1'
+        });
+
+        const model = vertex_ai.preview.getGenerativeModel({
+            model: 'gemini-2.5-flash', // (Or 2.0-flash depending on your region)
+            generationConfig: {
+                maxOutputTokens: 4000,
+                temperature: 0.1,
+            },
+            // 🛡️ THE FIX: Tell the AI it is allowed to read "dangerous" security logs
+            safetySettings: [
+                {
+                    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+            ],
+        });
+
+        // 2. Gather Context (Filter by 24 Hours)
+        let rawLogs = getLogs();
+        if (rawLogs instanceof Promise) rawLogs = await rawLogs;
+        if (!Array.isArray(rawLogs)) rawLogs = rawLogs.logs || rawLogs.data || [];
+
+        const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+        const now = Date.now();
+
+        // Filter logs strictly to the last 24 hours
+        const recentLogsArray = rawLogs.filter(log => {
+            const logTime = new Date(log.timestamp || log.date).getTime();
+            return (now - logTime) <= TWENTY_FOUR_HOURS;
+        });
+
+        // 🛑 VOLUME CHECK: Prevent wasteful API calls
+        if (recentLogsArray.length < 5) {
+            console.log("⏸️ [VERTEX AI] Sweep skipped. Insufficient log volume.");
+            return res.json({
+                analysis: "✅ <strong>System Quiet:</strong> Less than 5 events recorded in the past 24 hours. Insufficient data volume to warrant an AI threat sweep."
+            });
+        }
+
+        // Map the top 50 most recent valid logs
+        const recentLogsFormatted = recentLogsArray.slice(0, 50).map(log => {
+            const time = log.timestamp || log.date ? new Date(log.timestamp || log.date).toISOString() : "Unknown";
+            const user = log.userId || log.username || "System";
+            const msg = log.message || log.details || "No message";
+            return `[${time}] ${log.type || 'INFO'} - User: ${user} - ${msg}`;
+        }).join('\n');
+
+        // 3. The System Prompt (Upgraded for strict Regex targeting)
+        const prompt = `
+        You are a Cybersecurity SIEM Analyst for the BCDS Cloud System.
+        Analyze the following recent system logs.
+        
+        Identify:
+        1. Repeated failed authentications or rapid anomalies.
+        2. Users uploading restricted/prohibited content.
+        
+        Keep your response under 4 sentences. Format using basic HTML for the dashboard.
+        Use <strong> tags for emphasis. Do not use Markdown backticks.
+        
+        CRITICAL INSTRUCTION: If you identify a malicious user that should be banned, you MUST append their exact User ID at the very end of your response using this exact format:
+        [FREEZE_TARGET: user_id]
+        If multiple users need banning, output multiple tags like: [FREEZE_TARGET: user_id_1] [FREEZE_TARGET: user_id_2]
+        If no anomalies are found, state that the system is secure and do not output any tags.
+        
+        Note: The account 'admin@bcds.com' is the system administrator. Some elevated actions are normal, but you should still flag severe anomalies. NEVER recommend freezing the system administrator.
+        
+        LOGS TO ANALYZE:
+        ${recentLogsFormatted}
+        `;
+
+        // 4. Execute AI Call
+        console.log(`\n🚀 [VERTEX AI] Sending ${recentLogsFormatted.split('\n').length} logs to Gemini...`);
+        const response = await model.generateContent(prompt);
+
+        // 🔍 THE DIAGNOSTIC DUMP: This prints the EXACT payload from Google to your terminal
+        console.log("\n📦 [VERTEX AI RAW RESPONSE DUMP]:");
+        console.dir(response, { depth: null, colors: true });
+
+        // 🛡️ DEFENSIVE PARSING
+        let aiResponseText = "⚠️ AI Analysis failed. No valid response returned.";
+        const candidate = response?.response?.candidates?.[0];
+
+        if (candidate?.content?.parts?.[0]?.text) {
+            aiResponseText = candidate.content.parts[0].text;
+            console.log("✅ [VERTEX AI] Successfully parsed text response.");
+
+        } else if (candidate?.finishReason === 'SAFETY' || response?.response?.promptFeedback?.blockReason) {
+            aiResponseText = "⚠️ <strong>Analysis Blocked:</strong> The AI safety filters blocked the response.";
+            console.warn("🛑 [VERTEX AI] Blocked by Safety Filters.");
+
+        } else {
+            // If it fails, log exactly what we were trying to read
+            console.warn("⚠️ [VERTEX AI] Parsing failed. 'candidates' array might be empty or missing.");
+        }
+
+        res.json({ analysis: aiResponseText });
+
+    } catch (err) {
+        console.error("💥 [VERTEX AI ERROR]:", err);
+        res.status(500).json({ msg: "AI Sweep Failed", error: err.message });
+    }
+});
+
+// --- 📈 GET USER TRUST SCORE TRAJECTORY ---
+router.get('/user-chart/:id', [auth, admin], async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ msg: 'User not found' });
+
+        // Grab their logs
+        let rawLogs = getLogs();
+        if (rawLogs instanceof Promise) rawLogs = await rawLogs;
+        if (!Array.isArray(rawLogs)) rawLogs = rawLogs.logs || rawLogs.data || [];
+
+        const userLogs = rawLogs.filter(log => log.userId === req.params.id || log.username === user.username);
+
+        // Generate the last 15 days of labels
+        const labels = [];
+        const dataPoints = [];
+        let runningScore = 100; // Assume they started at 100
+
+        const today = new Date();
+
+        for (let i = 14; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(d.getDate() - i);
+            labels.push(d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }));
+
+            // Look for violations on this specific day to drop the score
+            const dayViolations = userLogs.filter(log => {
+                const logDate = new Date(log.timestamp || log.date);
+                return logDate.getDate() === d.getDate() && logDate.getMonth() === d.getMonth() && (log.type === 'CRITICAL' || log.type === 'SECURITY');
+            });
+
+            runningScore -= (dayViolations.length * 5); // Subtract 5 points per violation
+            if (runningScore < user.trustScore) runningScore = user.trustScore; // Floor it to their actual current score
+
+            dataPoints.push(runningScore);
+        }
+
+        // Force the final day to perfectly match their actual database score
+        dataPoints[dataPoints.length - 1] = user.trustScore;
+
+        res.json({ labels, dataPoints });
+
+    } catch (err) {
+        console.error("💥 [CHART ERROR]:", err);
+        res.status(500).json({ labels: [], dataPoints: [] });
+    }
+});
+
+// --- 🤖 GET USER SPECIFIC AI PROFILE ---
+// --- 🤖 GET USER SPECIFIC AI PROFILE (WITH CACHING) ---
+router.get('/ai-profile/:id', [auth, admin], async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ analysis: "User not found." });
+
+        // 1. Gather ONLY this user's logs
+        let rawLogs = getLogs();
+        if (rawLogs instanceof Promise) rawLogs = await rawLogs;
+        if (!Array.isArray(rawLogs)) rawLogs = rawLogs.logs || rawLogs.data || [];
+
+        const userLogsRaw = rawLogs.filter(log => log.userId === req.params.id || log.username === user.username);
+        const currentLogCount = userLogsRaw.length;
+
+        // 🛑 THE CACHE INTERCEPTOR: Check if we already analyzed this exact state
+        if (aiProfileCache[req.params.id] && aiProfileCache[req.params.id].logCount === currentLogCount) {
+            console.log(`⚡ [CACHE HIT] Returning saved AI profile for ${user.username}. Saved tokens!`);
+
+            // Return the cached summary, plus a little UI badge so the admin knows it was cached
+            return res.json({
+                analysis: aiProfileCache[req.params.id].summary +
+                    `<br><br><span style="font-size: 0.75rem; color: var(--text-secondary); background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px;"><i class="fa-solid fa-bolt text-amber"></i> Loaded from Cache (No new activity)</span>`
+            });
+        }
+
+        console.log(`🧠 [CACHE MISS] Generating new AI profile for ${user.username}...`);
+
+        // 2. Format logs for the AI (Cap at 50)
+        const userLogsFormatted = userLogsRaw.slice(0, 50).map(log => {
+            const time = log.timestamp || log.date ? new Date(log.timestamp || log.date).toISOString() : "Unknown Time";
+            return `[${time}] ${log.type || 'INFO'} - ${log.message || log.details}`;
+        }).join('\n');
+
+        // 3. Initialize Vertex AI & Prompt
+        const vertex_ai = new VertexAI({
+            project: process.env.GCP_PROJECT_ID,
+            location: process.env.GCP_LOCATION || 'us-central1'
+        });
+
+        const model = vertex_ai.preview.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            generationConfig: { maxOutputTokens: 3000, temperature: 0.2 },
+            safetySettings: [
+                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            ],
+        });
+
+        const prompt = `
+        You are a Cybersecurity Profiler for the BCDS Cloud System.
+        Write a concise, 3-sentence behavioral profile on the user: ${user.username} (Email: ${user.email}, Current Trust Score: ${user.trustScore}).
+        
+        Analyze their recent activity logs provided below.
+        - Are they a normal user doing standard uploads?
+        - Have they repeatedly violated policies or failed authentications?
+        - What is your final recommendation for managing this user?
+        
+        Format your response using basic HTML (e.g., <strong>, <ul>, <br>). DO NOT use markdown. 
+        If there are no logs, state that the user is new and lacks sufficient behavioral data.
+
+        USER ACTIVITY LOGS:
+        ${userLogsFormatted ? userLogsFormatted : 'No logs available for this user.'}
+        `;
+
+        const response = await model.generateContent(prompt);
+
+        let aiResponseText = "⚠️ AI Profiling failed to generate.";
+        const candidate = response?.response?.candidates?.[0];
+
+        if (candidate?.content?.parts?.[0]?.text) {
+            aiResponseText = candidate.content.parts[0].text;
+
+            // 💾 SAVE TO CACHE FOR NEXT TIME!
+            aiProfileCache[req.params.id] = {
+                summary: aiResponseText,
+                logCount: currentLogCount
+            };
+
+        } else if (candidate?.finishReason === 'SAFETY') {
+            aiResponseText = "⚠️ <strong>Analysis Blocked:</strong> Safety filters triggered.";
+        }
+
+        res.json({ analysis: aiResponseText });
+
+    } catch (err) {
+        console.error("💥 [VERTEX AI PROFILE ERROR]:", err);
+        res.status(500).json({ analysis: "⚠️ AI Agent Offline or Failed to Execute." });
     }
 });
 

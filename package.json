@@ -1,6 +1,8 @@
 {
   "dependencies": {
+    "@google-cloud/vertexai": "^1.10.0",
     "aws-sdk": "^2.1693.0",
+    "axios": "^1.13.6",
     "bcryptjs": "^3.0.3",
     "bull": "^4.16.5",
     "cors": "^2.8.6",

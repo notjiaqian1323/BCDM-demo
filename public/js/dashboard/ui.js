@@ -1,4 +1,5 @@
 // --- STATE TRACKING ---
+import { runAISweep } from './api.js';
 let previousUserStates = {};
 let isFilterMode = false;
 let trafficChartInstance = null;
@@ -61,7 +62,12 @@ export function renderLogs(logs) {
 
     // 🛠️ THE FIX: Correctly defining variables before injecting into HTML
     const newHtml = logs.map(log => {
-        const time = log.timestamp || log.date ? new Date(log.timestamp || log.date).toLocaleTimeString() : "00:00:00";
+        // 🛠️ THE FIX: Grab the date AND the time (e.g., "10/12/2026, 14:30:00")
+        const dateObj = new Date(log.timestamp || log.date);
+        const time = !isNaN(dateObj.getTime()) ?
+            `${dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })} ${dateObj.toLocaleTimeString()}` :
+            "Unknown Time";
+
         const typeClass = getLogColor(log.type);
         const displayType = log.type || 'INFO';
         const displayMsg = log.message || log.details || '';
@@ -96,44 +102,36 @@ export function setLogFilterMode(active, userName = "") {
 export function renderUserTable(users) {
     const tbody = document.getElementById('user-table-body');
 
-    users.forEach(user => {
-        const rowId = `row-${user._id}`;
+    // Clear out rows that are no longer in the top 5
+    // (A simple way to keep the DOM clean when the sort order changes)
+    tbody.innerHTML = '';
+
+    // 🛡️ LIMIT TO TOP 5
+    users.slice(0, 5).forEach(user => {
         const stateKey = `${user.trustScore}-${user.isBanned}`;
 
-        let row = document.getElementById(rowId);
-
-        if (!row) {
-            row = document.createElement('tr');
-            row.id = rowId;
-            row.innerHTML = `
-                <td>
-                    <div style="font-weight:bold;">${user.username || 'User'}</div>
-                    <small style="color:#64748b">ID: ${user._id.substring(0,8)}...</small>
-                </td>
-                <td class="score-cell">
-                    ${getScoreBadge(user.trustScore)}
-                </td>
-                <td>
-                    <button class="btn-action ${user.isBanned ? 'btn-unfreeze' : 'btn-freeze'}" 
-                            data-action="ban" data-id="${user._id}">
-                        ${user.isBanned ? 'UNFREEZE' : 'FREEZE'}
-                    </button>
-                    <button class="btn-action" 
-                            data-action="logs" data-id="${user._id}" data-name="${user.username}">
-                        LOGS
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(row);
-            previousUserStates[user._id] = stateKey;
-        }
-        else if (previousUserStates[user._id] !== stateKey) {
-            row.querySelector('.score-cell').innerHTML = getScoreBadge(user.trustScore);
-            const btn = row.querySelector('[data-action="ban"]');
-            btn.className = `btn-action ${user.isBanned ? 'btn-unfreeze' : 'btn-freeze'}`;
-            btn.innerText = user.isBanned ? 'UNFREEZE' : 'FREEZE';
-            previousUserStates[user._id] = stateKey;
-        }
+        const row = document.createElement('tr');
+        row.id = `row-${user._id}`;
+        row.innerHTML = `
+            <td>
+                <div style="font-weight:bold;">${user.username || 'User'}</div>
+                <small style="color:#64748b">ID: ${user._id.substring(0,8)}...</small>
+            </td>
+            <td class="score-cell">
+                ${getScoreBadge(user.trustScore)}
+            </td>
+            <td style="display:flex; gap: 5px;">
+                <button class="btn-action ${user.isBanned ? 'btn-unfreeze' : 'btn-freeze'}" 
+                        data-action="ban" data-id="${user._id}">
+                    ${user.isBanned ? 'UNFREEZE' : 'FREEZE'}
+                </button>
+                <button class="btn-action" 
+                        data-action="logs" data-id="${user._id}" data-name="${user.username}">
+                    LOGS
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
     });
 }
 

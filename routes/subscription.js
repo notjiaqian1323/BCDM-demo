@@ -378,8 +378,8 @@ router.post('/reject-invite/:id', auth, async (req, res) => {
 router.post('/create-checkout', auth, async (req, res) => {
     const { plan } = req.body;
     const prices = {
-        'Premium': 'price_1T7A06GpYkDBDjPdPOFenoj4',
-        'Enterprise': 'price_1T7A0LGpYkDBDjPdUxdXFBUu'
+        'Premium': 'price_1T7X7DPIa2p1PtKTUMUfe3Re',
+        'Enterprise': 'price_1T7X7SPIa2p1PtKTqT2PlQeS'
     };
 
     // NEW: Capture the exact origin domain the user is currently on

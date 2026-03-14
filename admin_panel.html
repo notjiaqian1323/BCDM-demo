@@ -20,64 +20,57 @@
             <span class="text-green font-bold" id="stat-system-status">OPERATIONAL</span>
         </div>
 
-        <button class="btn-action btn-compact" id="btn-view-users" style="display: flex; gap: 8px; align-items: center;" title="View User Directory">
-            <i class="fa-solid fa-chart-line text-blue"></i>
-            <span id="stat-trend" class="text-green font-bold">+5.2%</span>
-            <span style="color: var(--text-secondary);">Active Trend</span>
-        </button>
-
         <button class="btn-logout-sleek" id="btn-logout">
             <i class="fa-solid fa-power-off"></i> LOGOUT
         </button>
     </div>
 </header>
 
-<div id="users-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
-            <span>👥 System Directory (All Users)</span>
-            <button id="btn-close-modal" class="btn-close">✖</button>
-        </div>
-        <div class="modal-body">
-            <table class="watchlist-table">
-                <thead>
-                <tr>
-                    <th>ID (Short)</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Status</th>
-                </tr>
-                </thead>
-                <tbody id="all-users-list">
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
 <div class="main-grid">
 
     <div class="left-column">
-
         <div class="panel" style="margin-bottom: 20px;">
             <div class="panel-header">
-                📊 System Traffic (Last 24 Hours)
+                📊 System Traffic Analytics
             </div>
             <div style="padding: 15px; height: 200px;">
                 <canvas id="trafficChart"></canvas>
+            </div>
+            <div class="panel-toolbar" style="border-top: 1px solid var(--border-color); border-bottom: none;">
+                <div class="filter-group">
+                    <span class="hud-label" style="margin-bottom: 0;">Time Range:</span>
+                    <select id="chartTimeSelect" class="filter-select">
+                        <option value="24h">Last 24 Hours</option>
+                        <option value="7d">Last 7 Days</option>
+                        <option value="30d">Last 30 Days</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <span class="hud-label" style="margin-bottom: 0;">Event Type:</span>
+                    <select id="chartTypeSelect" class="filter-select">
+                        <option value="all">All Events</option>
+                        <option value="critical">Critical/Violations</option>
+                        <option value="auth">Authentications</option>
+                    </select>
+                </div>
             </div>
         </div>
 
         <div class="panel">
             <div class="panel-header">
-                <span class="pulse-red">●</span> Live Security Event Log
+                <span class="pulse-red">● </span> Live Security Event Log
+                <button class="btn-action btn-compact" style="background: rgba(59, 130, 246, 0.2); border: 1px solid var(--accent-blue); color: var(--accent-blue);" onclick="window.location.href='admin_analytics.html'">
+                    <i class="fa-solid fa-chart-pie"></i> View Full Analytics
+                </button>
             </div>
             <div class="panel-toolbar">
                 <div class="filter-group">
                     <i class="fa-solid fa-magnifying-glass text-secondary"></i>
                     <input type="text" id="logSearchInput" class="filter-input" placeholder="Search logs...">
                 </div>
-
+                <div class="filter-group">
+                    <input type="date" id="logDateFilter" class="filter-input" title="Filter by Date">
+                </div>
                 <div class="filter-group">
                     <span class="hud-label" style="margin-bottom: 0;">Sort By:</span>
                     <select id="logSortSelect" class="filter-select">
@@ -86,42 +79,59 @@
                     </select>
                 </div>
             </div>
-            <div class="live-feed-container" id="live-feed-container">
-            </div>
+            <div class="live-feed-container" id="live-feed-container"></div>
         </div>
     </div>
 
-    <div class="panel">
-        <div class="panel-header">
-            ⚠️ High-Risk Targets (Probation)
-        </div>
-        <div class="panel-toolbar">
-            <div class="filter-group">
-                <i class="fa-solid fa-magnifying-glass text-secondary"></i>
-                <input type="text" id="userSearchInput" class="filter-input" placeholder="Search ID or Username...">
-            </div>
+    <div class="right-column" style="display: flex; flex-direction: column; gap: 20px;">
 
-            <div class="filter-group">
-                <span class="hud-label" style="margin-bottom: 0;">Sort By:</span>
-                <select id="userSortSelect" class="filter-select">
-                    <option value="risk-high">Highest Risk (Default)</option>
-                    <option value="risk-low">Lowest Risk</option>
-                    <option value="recent">Most Recent</option>
-                    <option value="status">Status (Banned First)</option>
-                </select>
+        <div class="panel">
+            <div class="panel-header">
+                👥 Top Users Overview
+            </div>
+            <div class="panel-toolbar">
+                <div class="filter-group" style="width: 100%;">
+                    <select id="userSortSelect" class="filter-select" style="width: 100%;">
+                        <option value="risk-high">Highest Risk First</option>
+                        <option value="recent">Newest Accounts</option>
+                    </select>
+                </div>
+            </div>
+            <table class="watchlist-table">
+                <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Score</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody id="user-table-body">
+                </tbody>
+            </table>
+            <div style="padding: 10px; background: rgba(0,0,0,0.2); text-align: center; border-top: 1px solid var(--border-color);">
+                <button class="btn-action" style="background: var(--accent-blue); width: 100%; padding: 8px;" onclick="window.location.href='manage_users.html'">
+                    <i class="fa-solid fa-users-gear"></i> MANAGE ALL USERS
+                </button>
             </div>
         </div>
-        <table class="watchlist-table">
-            <thead>
-            <tr>
-                <th>User</th>
-                <th>Score</th>
-                <th>Actions</th>
-            </tr>
-            </thead>
-            <tbody id="user-table-body">
-            </tbody>
-        </table>
+
+        <div class="panel" style="flex: 1;">
+            <div class="panel-header" style="background: rgba(59, 130, 246, 0.2); border-bottom: 1px solid var(--accent-blue);">
+                <span><i class="fa-solid fa-robot text-blue"></i> AI Security Agent</span>
+                <span class="pulse text-blue" style="font-size: 0.8rem;">Monitoring...</span>
+            </div>
+            <div id="ai-feed" style="padding: 15px; font-size: 0.85rem; color: var(--text-secondary); overflow-y: auto; max-height: 300px;">
+                <div style="margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.3); border-left: 3px solid var(--accent-blue); border-radius: 4px;">
+                    <strong>System Initialized.</strong> I am analyzing real-time logs for anomalous behavior, unusual login spikes, and restricted data violations.
+                </div>
+            </div>
+            <div style="padding: 10px; border-top: 1px solid var(--border-color); text-align: center;">
+                <button id="btn-force-ai-scan" class="btn-action" style="background: transparent; border: 1px solid var(--accent-blue); color: var(--text-primary); width: 100%;">
+                    <i class="fa-solid fa-radar"></i> Run Manual Threat Sweep
+                </button>
+            </div>
+        </div>
+
     </div>
 </div>
 

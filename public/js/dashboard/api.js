@@ -98,3 +98,31 @@ export async function toggleBanAPI(userId) {
     if (!res.ok) throw new Error("Ban Action Failed");
     return res.json();
 }
+
+// --- 7. GEMINI AI AGENT ---
+export async function runAISweep() {
+    const res = await fetch(`${API_BASE}/ai-sweep`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error("AI Sweep request failed");
+    return res.json();
+}
+
+// --- 8. USER BEHAVIORAL AI PROFILE ---
+export async function fetchUserAIProfile(userId) {
+    const res = await fetch(`${API_BASE}/ai-profile/${userId}`, {
+        headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error("Failed to generate AI profile for user.");
+    return res.json();
+}
+
+// --- 9. USER TRUST SCORE CHART DATA ---
+export async function fetchUserChartData(userId) {
+    const res = await fetch(`${API_BASE}/user-chart/${userId}`, {
+        headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error("Failed to fetch user chart analytics.");
+    return res.json();
+}

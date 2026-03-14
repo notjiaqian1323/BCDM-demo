@@ -244,7 +244,7 @@ async function redirectToStripe(planName) {
         const session = await res.json();
         console.log('✅ [WORKSPACES] Stripe session created, redirecting...', session.id);
 
-        const stripe = Stripe('pk_test_51T5fH0GpYkDBDjPdFyxefQPFcBVvaXwrKCgCD7qps9zwGlOWlxXx1Ov8nqNMduSPCech45P2zjiIcthGFYn5gPfa001BlMPhLG');
+        const stripe = Stripe('pk_test_51T7WkuPIa2p1PtKTjA4NBnIS5jLFLfzZG11R9tDy9YYDO8fXlKLXuSeEJaT7YWvP4Jr2VycvGqgCKZEBogesjljb00qpjQyyEi');
         await stripe.redirectToCheckout({ sessionId: session.id });
     } catch (err) {
         console.error("💥 [WORKSPACES] Stripe Checkout Error:", err);
