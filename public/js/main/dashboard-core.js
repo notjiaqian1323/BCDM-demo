@@ -5,7 +5,7 @@ const handlePaymentResponse = () => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('success') === 'true') {
         console.log('💳 [CORE] Payment success detected in URL. Cleaning URL and fetching fresh data...');
-        window.history.replaceState({}, document.title, "/dashboard.html");
+        window.history.replaceState({}, document.title, "../../dashboard.html");
         alert("🎉 Payment Success! Updating your secure storage...");
         fetchMasterData();
     }

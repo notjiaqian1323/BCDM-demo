@@ -19,6 +19,12 @@ router.get('/status', auth, async (req, res) => {
 
     try {
         const user = await User.findById(req.user.id);
+
+        // 🛡️ NEW: Catch the Ghost Token before it touches user.email
+        if (!user) {
+            return res.status(404).json({ msg: "User not found. Token may be invalid or expired." });
+        }
+
         const userEmail = user.email.toLowerCase().trim();
 
         // 1. Fetch Shared Workspaces
@@ -91,7 +97,11 @@ router.get('/status', auth, async (req, res) => {
             pendingSentInvites: pendingSent,
             activityFeed
         });
-    } catch (err) { res.status(500).send('Server Error'); }
+    } catch (err) {
+    console.error("💥 Status Route Error:", err.message);
+    // 🛡️ NEW: Always return JSON!
+    res.status(500).json({ msg: 'Server Error', error: err.message });
+}
 });
 
 // --- UPDATED WORKSPACE CREATION WITH LOGGING ---
@@ -376,29 +386,46 @@ router.post('/reject-invite/:id', auth, async (req, res) => {
 
 // @route   POST /api/subscription/create-checkout
 router.post('/create-checkout', auth, async (req, res) => {
-    const { plan } = req.body;
-    const prices = {
-        'Premium': 'price_1T7X7DPIa2p1PtKTUMUfe3Re',
-        'Enterprise': 'price_1T7X7SPIa2p1PtKTqT2PlQeS'
-    };
+    try {
+        const { plan } = req.body;
+        const prices = {
+            'Premium': 'price_1T7X7DPIa2p1PtKTUMUfe3Re',
+            'Enterprise': 'price_1T7X7SPIa2p1PtKTqT2PlQeS'
+        };
 
-    // NEW: Capture the exact origin domain the user is currently on
-    const domainUrl = req.headers.origin || 'http://localhost:5500';
+        // 🐛 DEBUG LOGGER 1: Check what origin the backend actually sees
+        console.log("\n🔍 [STRIPE DEBUG] req.headers.origin:", req.headers.origin);
+        console.log("🔍 [STRIPE DEBUG] req.headers.referer:", req.headers.referer);
 
-    const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{ price: prices[plan], quantity: 1 }],
-        mode: 'subscription',
-        metadata: {
-            planName: plan
-        },
-        // NEW: Dynamically return them to the correct origin
-        success_url: `${domainUrl}/dashboard.html?success=true`,
-        cancel_url: `${domainUrl}/dashboard.html?canceled=true`,
-        client_reference_id: req.user.id
-    });
+        // Capture the exact origin domain the user is currently on
+        // Note: It's safer to check referer if origin is missing in some browsers
+        const domainUrl = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:63342';
 
-    res.json({ id: session.id });
+        // 🐛 DEBUG LOGGER 2: What exact URLs are we sending to Stripe?
+        const successUrl = `${domainUrl}/BCDM-demo/dashboard.html?success=true`;
+        const cancelUrl = `${domainUrl}/BCDM-demo/dashboard.html?canceled=true`;
+        console.log("🔍 [STRIPE DEBUG] success_url configured as:", successUrl);
+
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: [{ price: prices[plan], quantity: 1 }],
+            mode: 'subscription',
+            metadata: {
+                planName: plan
+            },
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            client_reference_id: req.user.id
+        });
+
+        // 🐛 DEBUG LOGGER 3: Confirm session creation
+        console.log("✅ [STRIPE DEBUG] Session created successfully. ID:", session.id);
+
+        res.json({ id: session.id });
+    } catch (err) {
+        console.error("💥 [STRIPE ERROR]:", err.message);
+        res.status(500).json({ msg: "Stripe checkout failed", error: err.message });
+    }
 });
 
 // @route   POST /api/subscription/customer-portal
@@ -409,7 +436,7 @@ router.post('/customer-portal', auth, async (req, res) => {
             return res.status(400).json({ msg: "No active paid subscription found." });
         }
 
-        const domainUrl = req.headers.origin || 'http://localhost:5500';
+        const domainUrl = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:5001';
 
         // Securely redirect to Stripe's hosted cancellation/renewal portal
         const session = await stripe.billingPortal.sessions.create({

@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const InvitationSchema = new mongoose.Schema({
-    inviter: { type: mongoose.Schema.Types.ObjectId, ref: 'user', required: true },
+    inviter: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     inviteeEmail: { type: String, required: true },
     // NEW: Link the invitation to a specific workspace ID
     workspaceId: { type: mongoose.Schema.Types.ObjectId, required: true },
