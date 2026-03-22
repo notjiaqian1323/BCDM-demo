@@ -7,7 +7,7 @@ const auth = require('../middleware/auth');
 const admin = require('../middleware/admin');
 const { addLog } = require('../utils/logger'); // ✅ Import Logger
 
-// --- 1. REGISTER ---
+// @route   POST /api/auth/register
 router.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
     try {
@@ -20,6 +20,7 @@ router.post('/register', async (req, res) => {
         }
 
         user = new User({ username, email, password });
+        
         const salt = await bcrypt.genSalt(10);
         user.password = await bcrypt.hash(password, salt);
         await user.save();
@@ -41,7 +42,7 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// --- 2. LOGIN ---
+// @route   POST /api/auth/login
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -166,15 +167,31 @@ router.post('/reset-password', auth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     try {
         const user = await User.findById(req.user.id);
+        
+        // Verify current password
         const isMatch = await bcrypt.compare(currentPassword, user.password);
         if (!isMatch) return res.status(400).json({ msg: "Invalid current password" });
 
+        // Hash and save new password
         const salt = await bcrypt.genSalt(10);
         user.password = await bcrypt.hash(newPassword, salt);
         await user.save();
 
-        res.json({ msg: "Password updated & logged to Sepolia Ledger!" });
-    } catch (err) { res.status(500).send("Server Error"); }
+        res.json({ msg: "Your password has been updated successfully." });
+    } catch (err) { 
+        res.status(500).send("Server Error"); 
+    }
+});
+
+// @route   GET /api/auth/user
+// @desc    Get logged in user data (used to show the correct name on the dashboard)
+router.get('/user', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        res.json(user);
+    } catch (err) {
+        res.status(500).send('Server Error');
+    }
 });
 
 module.exports = router;

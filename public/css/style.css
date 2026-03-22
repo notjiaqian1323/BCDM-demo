@@ -18,10 +18,12 @@ body {
     color: var(--text-primary);
     margin: 0;
     padding: 20px;
-    height: 100vh;
+
+    /* 🛠️ THE FIX: Allow the body to grow, and re-enable vertical scrolling */
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* Prevent body scroll on desktop */
+    overflow-x: hidden; /* Only hide horizontal overflow to prevent side-scrolling */
 }
 
 /* --- UTILS --- */
@@ -52,7 +54,7 @@ body {
 }
 
 /* UNIFIED CARD STYLE */
-.hud-item, .btn-logout {
+.hud-item{
     background: var(--bg-panel);
     padding: 12px 15px;
     border-radius: 6px;
@@ -99,6 +101,44 @@ body {
 }
 
 /* --- PANELS --- */
+/* --- FILTERS & TOOLBAR --- */
+.panel-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.15);
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--border-color);
+    gap: 10px;
+    flex-wrap: wrap; /* Allows stacking on small screens */
+}
+
+.filter-group {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.filter-input, .filter-select {
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.filter-input:focus, .filter-select:focus {
+    border-color: var(--accent-blue);
+}
+
+.filter-input::placeholder {
+    color: var(--text-secondary);
+}
+
 .panel {
     background: var(--bg-panel);
     border: 1px solid var(--border-color);
@@ -119,7 +159,7 @@ body {
 
 /* --- ZONE 1: LOGS --- */
 .live-feed-container {
-    flex: 1;
+    height: 420px; /* 🛠️ THE FIX: Locks desktop height here */
     overflow-y: auto;
     padding: 15px;
     font-family: 'Consolas', monospace;
@@ -182,7 +222,7 @@ body {
     font-size: 0.85rem;
     padding: 6px 12px;
     background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-color);
     border-radius: 6px;
 }
 .btn-compact {
@@ -206,7 +246,7 @@ body {
 }
 .modal-content {
     background: var(--bg-panel);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     width: 100%;
     max-width: 700px;
@@ -221,6 +261,64 @@ body {
     background: none; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer;
 }
 .btn-close:hover { color: white; }
+
+/* --- SLEEK LOGOUT BUTTON --- */
+.btn-logout-sleek {
+    background: transparent;
+    border: 1px solid var(--accent-red);
+    color: var(--accent-red);
+    padding: 6px 15px;
+    border-radius: 6px;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-logout-sleek:hover {
+    background: var(--accent-red);
+    color: white;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+/* --- ANIMATED LIVE FEED LOGS --- */
+/* --- INVISIBLE SCROLLING LOGS --- */
+.log-entry {
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 6px;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.log-time { color: var(--text-secondary); margin-right: 10px; flex-shrink: 0; }
+.log-type { display: inline-block; width: 80px; font-weight: bold; flex-shrink: 0; }
+
+.log-message-container {
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow-x: auto; /* Enables native scroll only when text hits the edge */
+
+    /* 👻 Hides scrollbar in Firefox/IE */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+/* 👻 Hides scrollbar in Chrome/Safari/Edge */
+.log-message-container::-webkit-scrollbar {
+    display: none;
+}
+
+.log-message {
+    display: inline-block;
+    white-space: nowrap;
+    padding-right: 20px; /* Breathing room at the end of the scroll */
+}
 
 /* =========================================================
 📱 LANDSCAPE TABLET / NETBOOK (1024px - 1200px)
@@ -317,11 +415,12 @@ body {
         height: auto;
     }
 
-    /* 4. Log Panel Fixes */
     .live-feed-container {
-        max-height: 350px; /* Limit height so it doesn't take whole screen */
-        min-height: 250px;
-        font-size: 0.8rem;
+        height: 400px; /* 🛠️ THE FIX: Locks the height so it never stretches the page */
+        overflow-y: auto;
+        padding: 15px;
+        font-family: 'Consolas', monospace;
+        font-size: 0.9rem;
     }
 
     /* 5. Table Fixes */

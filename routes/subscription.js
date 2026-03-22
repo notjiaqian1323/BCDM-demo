@@ -1,4 +1,3 @@
-const { addLog } = require('../utils/logger');
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
@@ -20,6 +19,12 @@ router.get('/status', auth, async (req, res) => {
 
     try {
         const user = await User.findById(req.user.id);
+
+        // 🛡️ NEW: Catch the Ghost Token before it touches user.email
+        if (!user) {
+            return res.status(404).json({ msg: "User not found. Token may be invalid or expired." });
+        }
+
         const userEmail = user.email.toLowerCase().trim();
 
         // 1. Fetch Shared Workspaces
@@ -57,8 +62,7 @@ router.get('/status', auth, async (req, res) => {
         // 2. UPDATED LOGIC: Pull logs for user OR actions in their owned workspaces
         const activityFeedRaw = await Activity.find({
             $or: [
-                { userId: req.user.id },
-                { details: { $regex: user.username, $options: 'i' } }
+                { userId: req.user.id }
             ]
         })
             .sort({ date: -1 })
@@ -76,7 +80,7 @@ router.get('/status', auth, async (req, res) => {
                 type: act.type,
                 name: act.details,
                 date: act.date,
-                user: displayUser
+                user: "You"
             };
         });
 
@@ -93,11 +97,14 @@ router.get('/status', auth, async (req, res) => {
             pendingSentInvites: pendingSent,
             activityFeed
         });
-    } catch (err) { res.status(500).send('Server Error'); }
+    } catch (err) {
+    console.error("💥 Status Route Error:", err.message);
+    // 🛡️ NEW: Always return JSON!
+    res.status(500).json({ msg: 'Server Error', error: err.message });
+}
 });
 
 // --- UPDATED WORKSPACE CREATION WITH LOGGING ---
-// @route   POST /api/subscription/workspaces
 // @route   POST /api/subscription/workspaces
 router.post('/workspaces', auth, async (req, res) => {
     const { name, allocateGB } = req.body;
@@ -199,7 +206,7 @@ router.post('/share', auth, async (req, res) => {
     }
 });
 
-// @route   POST /api/subscription/accept-invite/:id
+// @route POST /api/subscription/accept-invite/:id
 router.post('/accept-invite/:id', auth, async (req, res) => {
     try {
         const invite = await Invitation.findById(req.params.id);
@@ -215,6 +222,31 @@ router.post('/accept-invite/:id', auth, async (req, res) => {
         }
 
         invite.status = 'accepted';
+
+        // --- UPDATED: SYNC TO BLOCKCHAIN WITH TIMEOUT ---
+        try {
+            const { ethers } = require('ethers');
+            const fs = require('fs');
+
+            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:7545");
+            // Check connection first
+            await provider.getNetwork();
+
+            const wallet = new ethers.Wallet(process.env.SERVER_PRIVATE_KEY, provider);
+            const contractABI = JSON.parse(fs.readFileSync('./contractABI.json', 'utf8'));
+            const aclContract = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractABI, wallet);
+
+            console.log("🔗 Connecting to Blockchain...");
+            const tx = await aclContract.grantAccess(invite.workspaceId.toString(), req.user.id.toString());
+            // Wait for 1 confirmation
+            await tx.wait(1);
+            console.log(`✅ Blockchain ACL Updated`);
+
+        } catch (chainErr) {
+            console.error("🛑 BLOCKCHAIN SYNC FAILED:", chainErr.message);
+            // Optional: Tell the user it worked in DB but blockchain is pending
+            return res.status(500).json({ msg: "Blockchain connection error. Please ensure Ganache is running." });
+        }
         await invite.save(); await invitee.save(); await inviter.save();
 
         // PERSISTENT LOG FOR JOINING
@@ -230,11 +262,10 @@ router.post('/accept-invite/:id', auth, async (req, res) => {
 
 
 
-// routes/subscription.js
+// @route   DELETE /api/subscription/workspaces/:id
 router.delete('/workspaces/:id', auth, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
-        // This finds the sub-document by the ID passed from the frontend
         const workspace = user.workspacesCreated.id(req.params.id);
 
         if (!workspace) {
@@ -242,13 +273,38 @@ router.delete('/workspaces/:id', auth, async (req, res) => {
         }
 
         const wsName = workspace.name;
+        const wsIdString = req.params.id.toString();
 
-        // 1. AWS S3: Clean up the cloud folder first
+        // --- NEW: STEP 0 - BLOCKCHAIN CLEANUP ---
+        // We revoke the owner's permission on-chain before deleting the data
+        try {
+            const { ethers } = require('ethers');
+            const fs = require('fs');
+            const path = require('path');
+
+            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:7545");
+            const wallet = new ethers.Wallet(process.env.SERVER_PRIVATE_KEY.trim(), provider);
+            const contractABI = JSON.parse(fs.readFileSync(path.join(__dirname, '../contractABI.json'), 'utf8'));
+            const aclContract = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractABI, wallet);
+
+            console.log(`⛓️ Revoking Blockchain Access for deletion: Workspace ${wsIdString}`);
+            
+            // Revoke the owner's access on the ledger
+            const tx = await aclContract.revokeAccess(wsIdString, req.user.id.toString());
+            await tx.wait(); 
+            
+            console.log("✅ Blockchain ACL Cleaned.");
+        } catch (chainErr) {
+            console.error("🛑 Blockchain Revoke Failed during deletion:", chainErr.message);
+            // We continue with deletion even if blockchain fails so the user can reclaim quota
+        }
+
+        // 1. AWS S3: Clean up the cloud folder
         try {
             const folderPath = `${user.email}/${wsName}/`;
             const objects = await s3.listObjectsV2({ Bucket: process.env.AWS_BUCKET_NAME, Prefix: folderPath }).promise();
 
-            if (objects.Contents.length > 0) {
+            if (objects && objects.Contents.length > 0) {
                 await s3.deleteObjects({
                     Bucket: process.env.AWS_BUCKET_NAME,
                     Delete: { Objects: objects.Contents.map(o => ({ Key: o.Key })) }
@@ -262,14 +318,25 @@ router.delete('/workspaces/:id', auth, async (req, res) => {
         user.workspacesCreated.pull({ _id: req.params.id });
         await user.save();
 
-        // 3. Global Cleanup: Remove access for anyone you invited to THIS workspace
+        // 3. Global Cleanup: Remove access for anyone you invited
         await User.updateMany(
             { workspacesJoined: req.params.id },
             { $pull: { workspacesJoined: req.params.id } }
         );
 
-        res.json({ msg: "Workspace deleted and quota reclaimed!" });
+        // --- NEW BUG FIX: PURGE DANGLING INVITATIONS ---
+        await Invitation.deleteMany({ workspaceId: req.params.id });
+
+        // Activity Log
+        await new Activity({
+            userId: req.user.id,
+            type: 'WORKSPACE_DELETED',
+            details: `"${wsName}"`
+        }).save();
+
+        res.json({ msg: "Workspace deleted, S3 cleaned, and quota reclaimed!" });
     } catch (err) {
+        console.error("DELETE ERROR:", err);
         res.status(500).json({ msg: "Server error during workspace removal." });
     }
 });
@@ -310,49 +377,71 @@ router.post('/reject-invite/:id', auth, async (req, res) => {
 
         invite.status = 'declined'; // Or simply delete it
         await invite.save();
-        // Option: await Invitation.findByIdAndDelete(req.params.id);
+        // Option: await Invitation.findByIdAndDelete(req.params.id); 
 
         res.json({ msg: "Invitation declined." });
     } catch (err) { res.status(500).send('Server Error'); }
 });
 
+
 // @route   POST /api/subscription/create-checkout
 router.post('/create-checkout', auth, async (req, res) => {
-    const { plan } = req.body;
-    const prices = {
-        'Premium': 'price_1T7A06GpYkDBDjPdPOFenoj4',
-        'Enterprise': 'prod_U5iYofJgJyFOn9'
-    };
+    try {
+        const { plan } = req.body;
+        const prices = {
+            'Premium': 'price_1T7X7DPIa2p1PtKTUMUfe3Re',
+            'Enterprise': 'price_1T7X7SPIa2p1PtKTqT2PlQeS'
+        };
 
-    const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{ price: prices[plan], quantity: 1 }],
-        mode: 'subscription',
-        // FIX: Send the plan name so the webhook can read it
-        metadata: {
-            planName: plan
-        },
-        success_url: 'http://localhost:5500/dashboard.html?success=true',
-        cancel_url: 'http://localhost:5500/dashboard.html?canceled=true',
-        client_reference_id: req.user.id
-    });
+        // 🐛 DEBUG LOGGER 1: Check what origin the backend actually sees
+        console.log("\n🔍 [STRIPE DEBUG] req.headers.origin:", req.headers.origin);
+        console.log("🔍 [STRIPE DEBUG] req.headers.referer:", req.headers.referer);
 
-    res.json({ id: session.id });
+        // Capture the exact origin domain the user is currently on
+        // Note: It's safer to check referer if origin is missing in some browsers
+        const domainUrl = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:63342';
+
+        // 🐛 DEBUG LOGGER 2: What exact URLs are we sending to Stripe?
+        const successUrl = `${domainUrl}/BCDM-demo/dashboard.html?success=true`;
+        const cancelUrl = `${domainUrl}/BCDM-demo/dashboard.html?canceled=true`;
+        console.log("🔍 [STRIPE DEBUG] success_url configured as:", successUrl);
+
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: [{ price: prices[plan], quantity: 1 }],
+            mode: 'subscription',
+            metadata: {
+                planName: plan
+            },
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            client_reference_id: req.user.id
+        });
+
+        // 🐛 DEBUG LOGGER 3: Confirm session creation
+        console.log("✅ [STRIPE DEBUG] Session created successfully. ID:", session.id);
+
+        res.json({ id: session.id });
+    } catch (err) {
+        console.error("💥 [STRIPE ERROR]:", err.message);
+        res.status(500).json({ msg: "Stripe checkout failed", error: err.message });
+    }
 });
 
 // @route   POST /api/subscription/customer-portal
 router.post('/customer-portal', auth, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
-
         if (!user.stripeCustomerId) {
-            return res.status(400).json({ msg: "No active subscription found." });
+            return res.status(400).json({ msg: "No active paid subscription found." });
         }
 
-        // Create a portal session
+        const domainUrl = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:5001';
+
+        // Securely redirect to Stripe's hosted cancellation/renewal portal
         const session = await stripe.billingPortal.sessions.create({
             customer: user.stripeCustomerId,
-            return_url: 'http://localhost:5500/dashboard.html',
+            return_url: `${domainUrl}/dashboard.html`,
         });
 
         res.json({ url: session.url });
@@ -366,8 +455,6 @@ router.post('/customer-portal', auth, async (req, res) => {
 router.post('/leave-workspace/:id', auth, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
-
-        // Find the workspace name for the log before removing access
         const owner = await User.findOne({ "workspacesCreated._id": req.params.id });
         const workspace = owner ? owner.workspacesCreated.id(req.params.id) : null;
         const wsName = workspace ? workspace.name : "Shared Workspace";
@@ -376,11 +463,32 @@ router.post('/leave-workspace/:id', auth, async (req, res) => {
             return res.status(400).json({ msg: "You are not a member of this workspace." });
         }
 
-        // Remove workspace from user's joined list
+        // --- NEW: STEP 1.5 - REVOKE BLOCKCHAIN ACCESS ---
+        try {
+            const { ethers } = require('ethers');
+            const fs = require('fs');
+            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:7545");
+            const wallet = new ethers.Wallet(process.env.SERVER_PRIVATE_KEY, provider);
+            const contractABI = JSON.parse(fs.readFileSync('./contractABI.json', 'utf8'));
+            const aclContract = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractABI, wallet);
+
+            console.log(`⛓️ Revoking Blockchain Access: User ${req.user.id} from Workspace ${req.params.id}`);
+
+            // Call the Smart Contract function
+            const tx = await aclContract.revokeAccess(req.params.id.toString(), req.user.id.toString());
+            await tx.wait();
+
+            console.log("✅ Blockchain ACL Revoked.");
+        } catch (chainErr) {
+            console.error("Blockchain Revoke Failed:", chainErr.message);
+            // We continue so the user isn't stuck in a workspace they want to leave
+        }
+
+        // Remove workspace from user's joined list (MongoDB)
         user.workspacesJoined.pull(req.params.id);
         await user.save();
 
-        // STEP 2: Safe Logging (Prevents server crash if Activity has issues)
+        // Activity Logging
         try {
             await new Activity({
                 userId: req.user.id,
@@ -388,12 +496,10 @@ router.post('/leave-workspace/:id', auth, async (req, res) => {
                 details: `"${wsName}"`
             }).save();
         } catch (logErr) {
-            // This message appears in your terminal if logging fails, but the user still leaves
-            console.log("Activity logging failed, but data was deleted.");
+            console.log("Activity logging failed.");
         }
 
-        // STEP 3: Always send a JSON response to stop the "Network Error" popup
-        return res.status(200).json({ msg: `Successfully left "${wsName}"` });
+        return res.status(200).json({ msg: `Successfully left "${wsName}" and revoked on-chain permissions.` });
 
     } catch (err) {
         console.error("LEAVE ERROR:", err);

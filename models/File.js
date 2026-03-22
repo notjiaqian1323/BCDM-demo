@@ -1,4 +1,3 @@
-// models/File.js
 const mongoose = require('mongoose');
 
 const FileSchema = new mongoose.Schema({
@@ -48,4 +47,4 @@ const FileSchema = new mongoose.Schema({
     ],
 });
 
-module.exports = mongoose.model('File', FileSchema);
+module.exports = mongoose.model('file', FileSchema);

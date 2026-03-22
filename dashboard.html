@@ -13,33 +13,38 @@
 
 <body>
 
-<aside class="sidebar">
-    <div class="sidebar-header"><i class="fa-solid fa-shield-halved"></i> BCDS</div>
-    <div class="nav-menu">
-        <a class="nav-item active" id="nav-personal" onclick="switchTab('personal')"><i
-                class="fa-solid fa-hard-drive"></i> My Drive</a>
-        <a class="nav-item" id="nav-workspaces" onclick="switchTab('workspaces')"><i
-                class="fa-solid fa-network-wired"></i> Workspaces <span id="inviteBadge" class="badge"
-                                                                        style="display:none;">0</span></a>
-        <a class="nav-item" id="nav-profile" onclick="switchTab('profile')"><i class="fa-solid fa-user-gear"></i>
-            Account & Billing</a>
-    </div>
-    <div style="padding: 20px;">
-        <button class="btn btn-outline" style="color: #94a3b8; border-color: #334155; width: 100%;"
-                onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</button>
-    </div>
-</aside>
-
-<main class="main-content">
-    <header class="topbar">
-        <div class="page-title" id="topbar-title">My Personal Drive</div>
-        <div style="display: flex; align-items: center; gap: 15px;">
-                <span id="topbar-email"
-                      style="font-weight: 500; font-size: 0.9rem; color: var(--text-muted);">Loading...</span>
-            <div style="width: 35px; height: 35px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;"
-                 id="topbar-avatar">U</div>
+    <aside class="sidebar">
+        <div class="sidebar-header"><i class="fa-solid fa-shield-halved"></i> BCDS</div>
+        <div class="nav-menu">
+            <a class="nav-item active" id="nav-personal" onclick="switchTab('personal')"><i
+                    class="fa-solid fa-hard-drive"></i> My Drive</a>
+            <a class="nav-item" id="nav-workspaces" onclick="switchTab('workspaces')"><i
+                    class="fa-solid fa-network-wired"></i> Workspaces <span id="inviteBadge" class="badge"
+                    style="display:none;">0</span></a>
+            <a class="nav-item" id="nav-ledger" onclick="switchTab('ledger'); fetchLedger();"><i
+                    class="fa-solid fa-link"></i> Blockchain Ledger</a>
+            <a class="nav-item" id="nav-reports" onclick="switchTab('reports'); fetchReports();">
+                <i class="fa-solid fa-chart-line"></i> Analytics Reports
+            </a>
+            <a class="nav-item" id="nav-profile" onclick="switchTab('profile')"><i class="fa-solid fa-user-gear"></i>
+                Account & Billing</a>
         </div>
-    </header>
+        <div style="padding: 20px;">
+            <button class="btn btn-outline" style="color: #94a3b8; border-color: #334155; width: 100%;"
+                onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="page-title" id="topbar-title">My Personal Drive</div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <span id="topbar-email"
+                    style="font-weight: 500; font-size: 0.9rem; color: var(--text-muted);">Loading...</span>
+                <div style="width: 35px; height: 35px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;"
+                    id="topbar-avatar">U</div>
+            </div>
+        </header>
 
     <div id="personal-view" class="view-section active">
         <div class="dashboard-grid">
@@ -59,336 +64,439 @@
                                style="margin-top:15px; font-weight:600; color:var(--primary);">
                             </p>
                         </div>
-                        <div style="margin: 15px 0; display: flex; align-items: center; gap: 10px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-                            <input type="checkbox" id="scanPiiPersonal" name="scanPii" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary);">
-                            <label for="scanPiiPersonal" style="font-size: 0.9rem; font-weight: 600; color: var(--text-main); cursor: pointer; flex: 1;">
-                                <i class="fa-solid fa-user-shield" style="color: var(--primary); margin-right: 5px;"></i> Run NLP Compliance Scan
-                            </label>
-                        </div>
                         <button type="submit" class="btn btn-primary" id="btnUploadPersonal"><i
                                 class="fa-solid fa-lock"></i> Encrypt to My Drive</button>
                     </form>
                 </div>
 
-                <div class="card">
-                    <div class="card-header"><i class="fa-solid fa-clock-rotate-left"></i> Recent Activity</div>
-                    <div id="activityFeed" style="max-height: 250px; overflow-y: auto;">
-                        <p style="padding: 20px; text-align: center; color: var(--text-muted);">No recent activity.
-                        </p>
+                    <div class="card">
+                        <div class="card-header"><i class="fa-solid fa-clock-rotate-left"></i> Recent Activity</div>
+                        <div id="activityFeed" style="max-height: 250px; overflow-y: auto;">
+                            <p style="padding: 20px; text-align: center; color: var(--text-muted);">No recent activity.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 24px;">
+                    <div class="card" style="padding: 20px;">
+                        <div
+                            style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9rem;">
+                            <span style="font-weight: 600; color: var(--text-main);"><i class="fa-solid fa-database"
+                                    style="color: var(--text-muted);"></i> Storage Usage</span>
+                            <span id="personalStorageText">Loading...</span>
+                        </div>
+                        <div class="progress-bg">
+                            <div class="progress-fill" id="personalStorageBar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="flex: 1;">
+                        <div class="card-header" style="justify-content: space-between;">
+                            <div><i class="fa-solid fa-folder-open" style="color: var(--text-muted);"></i> My Files
+                            </div>
+                            <button class="btn btn-outline" style="width:auto; padding:5px 10px; font-size: 0.85rem;"
+                                onclick="loadFiles('personal', 'fileListPersonal')"><i
+                                    class="fa-solid fa-rotate-right"></i></button>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>File Name</th>
+                                        <th>Uploaded By</th>
+                                        <th>Size</th>
+                                        <th style="text-align: right;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fileListPersonal">
+                                    <tr>
+                                        <td colspan="4" style="text-align:center;"><i
+                                                class="fa-solid fa-spinner fa-spin"></i> Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div style="display: flex; flex-direction: column; gap: 24px;">
-                <div class="card" style="padding: 20px;">
-                    <div
-                            style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9rem;">
-                            <span style="font-weight: 600; color: var(--text-main);"><i class="fa-solid fa-database"
-                                                                                        style="color: var(--text-muted);"></i> Storage Usage</span>
-                        <span id="personalStorageText">Loading...</span>
-                    </div>
-                    <div class="progress-bg">
-                        <div class="progress-fill" id="personalStorageBar" style="width: 0%;"></div>
-                    </div>
+        <div id="workspaces-view" class="view-section">
+
+            <div id="wsInboxArea" style="display: none; margin-bottom: 30px;">
+                <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--warning);"><i
+                        class="fa-solid fa-envelope-open-text"></i> Pending Invitations</h3>
+                <div id="wsInboxList"></div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="font-size: 1.1rem; color: #0f172a;"><i class="fa-solid fa-network-wired"
+                        style="color: var(--workspace);"></i> My Workspaces</h3>
+                <button class="btn btn-workspace" style="width: auto; padding: 8px 16px; font-size: 0.85rem;"
+                    onclick="openWorkspaceModal()">
+                    <i class="fa-solid fa-folder-plus"></i> Create New Workspace
+                </button>
+            </div>
+            <div class="ws-grid" id="wsJoinedGrid">
+                <div style="grid-column: 1/-1; color: var(--text-muted); font-size: 0.9rem;">You haven't joined any
+                    workspaces yet.</div>
+            </div>
+
+            <div class="card full-width" style="border-top: 4px solid var(--primary); margin-top: 24px;">
+                <div class="card-header" style="border-bottom: 1px solid var(--border); padding-bottom: 15px;">
+                    <i class="fa-solid fa-users-gear"></i> Manage Team Invitations
                 </div>
 
-                <div class="card" style="flex: 1;">
+                <div class="dashboard-grid"
+                    style="margin-bottom: 0; grid-template-columns: 1fr 1fr; gap: 40px; padding-top: 20px;">
+                    <div>
+                        <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;"
+                            id="shareLimitText">
+                            Select a workspace to invite members.
+                        </p>
+
+                        <div style="margin-bottom: 20px;">
+                            <label
+                                style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 8px;">1.
+                                Select Target Workspace</label>
+                            <select id="inviteWorkspaceSelect"
+                                style="width:100%; padding:14px; border:1px solid var(--border); border-radius:8px; outline:none; background: #f8fafc; cursor: pointer; font-weight: 500; color: var(--text-main); transition: 0.2s;">
+                                <option value="">-- Choose a workspace --</option>
+                            </select>
+                        </div>
+
+                        <div style="margin-bottom: 20px;">
+                            <label
+                                style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 8px;">2.
+                                Enter Team Member Email</label>
+                            <div style="display: flex; gap: 10px;">
+                                <input type="email" id="shareEmailInput" placeholder="team@example.com"
+                                    style="flex:1; padding:14px; border:1px solid var(--border); border-radius:8px; outline:none; background: #f8fafc;">
+                                <button class="btn btn-primary" style="width:auto; padding: 0 25px; border-radius: 8px;"
+                                    onclick="shareStorage()">
+                                    <i class="fa-solid fa-paper-plane"></i> Send Invite
+                                </button>
+                            </div>
+                        </div>
+
+                        <div
+                            style="background: #eef2ff; padding: 15px; border-radius: 8px; border: 1px solid #c7d2fe; display: flex; gap: 12px; align-items: start;">
+                            <i class="fa-solid fa-circle-info" style="color: var(--primary); margin-top: 3px;"></i>
+                            <p style="font-size: 0.85rem; color: #4338ca; line-height: 1.4;">Invited users only gain
+                                access to the **specific folder** selected above. Your personal drive remains private.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Invite Email</th>
+                                    <th>Workspace</th>
+                                    <th>Status</th>
+                                    <th style="text-align: right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sentInvitesList"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="explorer-view" class="view-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <button class="btn btn-outline" style="width: auto;" onclick="switchTab('workspaces')"><i
+                        class="fa-solid fa-arrow-left"></i> Back to Hub</button>
+
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <span id="workspaceOwnerBadge"
+                        style="background: #e0e7ff; color: var(--workspace); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; border: 1px solid #c7d2fe;">
+                        <i class="fa-solid fa-crown" style="margin-right: 5px;"></i> Owned by: Loading...
+                    </span>
+                    <button id="leaveWorkspaceBtn" class="btn"
+                        style="background: var(--danger); color: white; width: auto; font-size: 0.85rem;"
+                        onclick="leaveCurrentWorkspace()">
+                        <i class="fa-solid fa-person-walking-arrow-right"></i> Leave Workspace
+                    </button>
+                    <button id="deleteWorkspaceBtn" class="btn"
+                        style="background: var(--danger); color: white; width: auto; font-size: 0.85rem; display: none;"
+                        onclick="deleteOwnedWorkspace()">
+                        <i class="fa-solid fa-trash-can"></i> Delete Workspace
+                    </button>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="card">
+                    <div class="card-header"><i class="fa-solid fa-cloud-arrow-up" style="color: var(--workspace);"></i>
+                        Upload to Team</div>
+                    <form id="uploadFormWorkspace" onsubmit="handleUpload(event, currentWorkspaceId)">
+                        <div class="upload-zone workspace-theme"
+                            onclick="document.getElementById('fileInputWorkspace').click()">
+                            <i class="fa-solid fa-file-export"
+                                style="font-size: 2.5rem; color: #c4b5fd; margin-bottom: 15px;"></i>
+                            <p style="color: var(--text-main); font-weight: 500;">Click to select file</p>
+                            <input type="file" id="fileInputWorkspace" required style="display:none;"
+                                onchange="document.getElementById('fileNameWorkspace').innerText = this.files[0] ? this.files[0].name : ''">
+                            <p id="fileNameWorkspace" style="margin-top:15px; font-weight:600; color:var(--workspace);">
+                            </p>
+                        </div>
+                        <div style="margin: 15px 0; display: flex; align-items: center; gap: 10px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+                            <input type="checkbox" id="scanPiiWorkspace" name="scanPii" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary);">
+                            <label for="scanPiiWorkspace" style="font-size: 0.9rem; font-weight: 600; color: var(--text-main); cursor: pointer; flex: 1;">
+                                <i class="fa-solid fa-user-shield" style="color: var(--primary); margin-right: 5px;"></i> Run NLP Compliance Scan
+                            </label>
+                        </div>
+                        <button type="submit" class="btn btn-workspace" id="btnUploadWorkspace"><i
+                                class="fa-solid fa-lock"></i> Encrypt to Workspace</button>
+                    </form>
+                </div>
+
+                <div class="card">
                     <div class="card-header" style="justify-content: space-between;">
-                        <div><i class="fa-solid fa-folder-open" style="color: var(--text-muted);"></i> My Files
+                        <div><i class="fa-regular fa-folder-open" style="color: var(--workspace);"></i> Shared Files
                         </div>
                         <button class="btn btn-outline" style="width:auto; padding:5px 10px; font-size: 0.85rem;"
-                                onclick="loadFiles('personal', 'fileListPersonal')"><i
+                            onclick="loadFiles(currentWorkspaceId, 'fileListWorkspace')"><i
                                 class="fa-solid fa-rotate-right"></i></button>
                     </div>
                     <div class="table-container">
                         <table>
                             <thead>
-                            <tr>
-                                <th>File Name</th>
-                                <th>Uploaded By</th>
-                                <th>Size</th>
-                                <th style="text-align: right;">Actions</th>
-                            </tr>
+                                <tr>
+                                    <th>File Name</th>
+                                    <th>Uploaded By</th>
+                                    <th>Size</th>
+                                    <th style="text-align: right;">Actions</th>
+                                </tr>
                             </thead>
-                            <tbody id="fileListPersonal">
-                            <tr>
-                                <td colspan="4" style="text-align:center;"><i
-                                        class="fa-solid fa-spinner fa-spin"></i> Loading...</td>
-                            </tr>
+                            <tbody id="fileListWorkspace">
+                                <tr>
+                                    <td colspan="4" style="text-align:center;"><i
+                                            class="fa-solid fa-spinner fa-spin"></i> Loading...</td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div id="workspaces-view" class="view-section">
+        <div id="reports-view" class="view-section">
+            <div class="card full-width" style="border-top: 4px solid var(--workspace); margin-bottom: 24px;">
+                <div class="card-header"><i class="fa-solid fa-file-shield"></i> Data Provenance Audit Export</div>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px;">Generate a
+                    cryptographically-verifiable CSV report of all file activities within a specific date range.</p>
 
-        <div id="wsInboxArea" style="display: none; margin-bottom: 30px;">
-            <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--warning);"><i
-                    class="fa-solid fa-envelope-open-text"></i> Pending Invitations</h3>
-            <div id="wsInboxList"></div>
-        </div>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h3 style="font-size: 1.1rem; color: #0f172a;"><i class="fa-solid fa-network-wired"
-                                                              style="color: var(--workspace);"></i> My Workspaces</h3>
-            <button class="btn btn-workspace" style="width: auto; padding: 8px 16px; font-size: 0.85rem;"
-                    onclick="openWorkspaceModal()">
-                <i class="fa-solid fa-folder-plus"></i> Create New Workspace
-            </button>
-        </div>
-        <div class="ws-grid" id="wsJoinedGrid">
-            <div style="grid-column: 1/-1; color: var(--text-muted); font-size: 0.9rem;">You haven't joined any
-                workspaces yet.</div>
-        </div>
-
-        <div class="card full-width" style="border-top: 4px solid var(--primary); margin-top: 24px;">
-            <div class="card-header" style="border-bottom: 1px solid var(--border); padding-bottom: 15px;">
-                <i class="fa-solid fa-users-gear"></i> Manage Team Invitations
+                <div
+                    style="display: flex; gap: 15px; align-items: flex-end; background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid var(--border);">
+                    <div style="flex: 1;">
+                        <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">START DATE</label>
+                        <input type="date" id="auditStartDate"
+                            style="width:100%; padding:10px; border:1px solid var(--border); border-radius:6px; outline:none;">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">END DATE</label>
+                        <input type="date" id="auditEndDate"
+                            style="width:100%; padding:10px; border:1px solid var(--border); border-radius:6px; outline:none;">
+                    </div>
+                    <button class="btn btn-workspace" style="width: auto; padding: 10px 20px;"
+                        onclick="downloadComplianceReport()">
+                        <i class="fa-solid fa-download"></i> Generate CSV Report
+                    </button>
+                </div>
             </div>
 
-            <div class="dashboard-grid"
-                 style="margin-bottom: 0; grid-template-columns: 1fr 1fr; gap: 40px; padding-top: 20px;">
-                <div>
-                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;"
-                       id="shareLimitText">
-                        Select a workspace to invite members.
-                    </p>
+            <div class="card full-width" style="border-top: 4px solid var(--danger); margin-bottom: 24px;">
+                <div class="card-header"><i class="fa-solid fa-user-shield" style="color: var(--danger);"></i>
+                    Zero-Trust Access & Exposure Matrix</div>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px;">Audit external
+                    collaborators and pending invitations across all your owned workspaces to prevent unauthorized data
+                    exposure.</p>
 
-                    <div style="margin-bottom: 20px;">
-                        <label
-                                style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 8px;">1.
-                            Select Target Workspace</label>
-                        <select id="inviteWorkspaceSelect"
-                                style="width:100%; padding:14px; border:1px solid var(--border); border-radius:8px; outline:none; background: #f8fafc; cursor: pointer; font-weight: 500; color: var(--text-main); transition: 0.2s;">
-                            <option value="">-- Choose a workspace --</option>
-                        </select>
+                <div id="accessMatrixArea">
+                    <p style="text-align:center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Scanning
+                        access controls...</p>
+                </div>
+            </div>
+
+            <div class="card full-width" style="border-top: 4px solid var(--primary);">
+                <div class="card-header"><i class="fa-solid fa-chart-line"></i> Predictive FinOps & Storage Forecasting
+                </div>
+                <div id="finopsReportArea">
+                    <p style="text-align:center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Analyzing
+                        consumption trends...</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="profile-view" class="view-section">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <div class="card-header"><i class="fa-solid fa-gem" style="color: var(--workspace);"></i> Billing &
+                        Subscription</div>
+                    <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px;"
+                        id="subStatus">
+                        <i class="fa-solid fa-spinner fa-spin"></i> Loading plan...
+                    </div>
+                    <div id="dateStatus"
+                        style="font-size: 0.9rem; color: var(--text-main); margin-bottom: 20px; padding: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; font-weight: 500;">
                     </div>
 
-                    <div style="margin-bottom: 20px;">
-                        <label
-                                style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 8px;">2.
-                            Enter Team Member Email</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="email" id="shareEmailInput" placeholder="team@example.com"
-                                   style="flex:1; padding:14px; border:1px solid var(--border); border-radius:8px; outline:none; background: #f8fafc;">
-                            <button class="btn btn-primary" style="width:auto; padding: 0 25px; border-radius: 8px;"
-                                    onclick="shareStorage()">
-                                <i class="fa-solid fa-paper-plane"></i> Send Invite
-                            </button>
-                        </div>
+                    <div id="upgradeButtons" style="display: grid; gap: 10px;">
+                        <button class="btn" style="background:#10b981; color:white;"
+                            onclick="redirectToStripe('Premium')"><i class="fa-solid fa-credit-card"></i> Upgrade to
+                            Premium (RM40/mo)</button>
+                        <button class="btn" style="background:#8b5cf6; color:white;"
+                            onclick="redirectToStripe('Enterprise')"><i class="fa-solid fa-building"></i> Upgrade to
+                            Enterprise (RM120/mo)</button>
+                    </div>
+                    <div style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
+                        <button class="btn btn-outline" style="width: 100%;" onclick="manageSubscriptionPortal()">
+                            <i class="fa-solid fa-file-invoice-dollar"></i> Manage Billing (Cancel / Renew Plan)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fa-solid fa-lock" style="color: var(--primary);"></i>
+                        Security & Access
+                    </div>
+                    <div style="padding: 10px 0 20px 0;">
+                        <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6;">
+                            Regularly updating your password helps keep your cloud storage and personal data secure.
+                            Changes take effect immediately across all your workspaces.
+                        </p>
                     </div>
 
                     <div
-                            style="background: #eef2ff; padding: 15px; border-radius: 8px; border: 1px solid #c7d2fe; display: flex; gap: 12px; align-items: start;">
-                        <i class="fa-solid fa-circle-info" style="color: var(--primary); margin-top: 3px;"></i>
-                        <p style="font-size: 0.85rem; color: #4338ca; line-height: 1.4;">Invited users only gain
-                            access to the **specific folder** selected above. Your personal drive remains private.
-                        </p>
-                    </div>
-                </div>
+                        style="background: #f8fafc; padding: 24px; border-radius: 10px; border: 1px solid var(--border);">
+                        <h4 style="margin-bottom: 20px; font-size: 1rem; color: #0f172a;">Change Account Password</h4>
 
-                <div class="table-container">
-                    <table>
-                        <thead>
-                        <tr>
-                            <th>Invite Email</th>
-                            <th>Workspace</th>
-                            <th>Status</th>
-                            <th style="text-align: right;">Actions</th>
-                        </tr>
-                        </thead>
-                        <tbody id="sentInvitesList"></tbody>
-                    </table>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label
+                                style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 8px;">CURRENT
+                                PASSWORD</label>
+                            <input type="password" id="currentPassword" placeholder="Enter current password"
+                                style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; outline:none; transition: 0.2s;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label
+                                style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 8px;">NEW
+                                SECURE PASSWORD</label>
+                            <input type="password" id="newPassword" placeholder="Minimum 8 characters"
+                                style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; outline:none; transition: 0.2s;">
+                        </div>
+
+                        <button class="btn btn-primary" id="btnConfirmReset" onclick="processPasswordReset()"
+                            style="padding: 14px; border-radius: 8px;">
+                            <i class="fa-solid fa-shield-check"></i> Update Password
+                        </button>
+
+                        <div id="resetMessage"
+                            style="margin-top: 15px; font-weight: 500; font-size: 0.9rem; text-align: center;"></div>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-
-    <div id="explorer-view" class="view-section">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <button class="btn btn-outline" style="width: auto;" onclick="switchTab('workspaces')"><i
-                    class="fa-solid fa-arrow-left"></i> Back to Hub</button>
-
-            <div style="display: flex; gap: 15px; align-items: center;">
-                    <span id="workspaceOwnerBadge"
-                          style="background: #e0e7ff; color: var(--workspace); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; border: 1px solid #c7d2fe;">
-                        <i class="fa-solid fa-crown" style="margin-right: 5px;"></i> Owned by: Loading...
-                    </span>
-                <button id="leaveWorkspaceBtn" class="btn"
-                        style="background: var(--danger); color: white; width: auto; font-size: 0.85rem;"
-                        onclick="leaveCurrentWorkspace()">
-                    <i class="fa-solid fa-person-walking-arrow-right"></i> Leave Workspace
-                </button>
-                <button id="deleteWorkspaceBtn" class="btn"
-                        style="background: var(--danger); color: white; width: auto; font-size: 0.85rem; display: none;"
-                        onclick="deleteOwnedWorkspace()">
-                    <i class="fa-solid fa-trash-can"></i> Delete Workspace
-                </button>
-            </div>
-        </div>
-
-        <div class="dashboard-grid">
-            <div class="card">
-                <div class="card-header"><i class="fa-solid fa-cloud-arrow-up" style="color: var(--workspace);"></i>
-                    Upload to Team</div>
-                <form id="uploadFormWorkspace" onsubmit="handleUpload(event, currentWorkspaceId)">
-                    <div class="upload-zone workspace-theme"
-                         onclick="document.getElementById('fileInputWorkspace').click()">
-                        <i class="fa-solid fa-file-export"
-                           style="font-size: 2.5rem; color: #c4b5fd; margin-bottom: 15px;"></i>
-                        <p style="color: var(--text-main); font-weight: 500;">Click to select file</p>
-                        <input type="file" id="fileInputWorkspace" required style="display:none;"
-                               onchange="document.getElementById('fileNameWorkspace').innerText = this.files[0] ? this.files[0].name : ''">
-                        <p id="fileNameWorkspace" style="margin-top:15px; font-weight:600; color:var(--workspace);">
-                        </p>
-                    </div>
-                    <button type="submit" class="btn btn-workspace" id="btnUploadWorkspace"><i
-                            class="fa-solid fa-lock"></i> Encrypt to Workspace</button>
-                </form>
-            </div>
-
-            <div class="card">
-                <div class="card-header" style="justify-content: space-between;">
-                    <div><i class="fa-regular fa-folder-open" style="color: var(--workspace);"></i> Shared Files
-                    </div>
-                    <button class="btn btn-outline" style="width:auto; padding:5px 10px; font-size: 0.85rem;"
-                            onclick="loadFiles(currentWorkspaceId, 'fileListWorkspace')"><i
-                            class="fa-solid fa-rotate-right"></i></button>
-                </div>
+        <div id="ledger-view" class="view-section">
+            <div class="card full-width">
+                <div class="card-header"><i class="fa-solid fa-link" style="color: var(--primary);"></i> Immutable Audit
+                    Ledger</div>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">
+                    Every file uploaded is cryptographically hashed and linked. This proves data integrity and
+                    timestamps.
+                </p>
                 <div class="table-container">
                     <table>
                         <thead>
-                        <tr>
-                            <th>File Name</th>
-                            <th>Uploaded By</th>
-                            <th>Size</th>
-                            <th style="text-align: right;">Actions</th>
-                        </tr>
+                            <tr>
+                                <th>Block #</th>
+                                <th>Timestamp</th>
+                                <th>File ID (Hashed)</th>
+                                <th>Block Hash</th>
+                            </tr>
                         </thead>
-                        <tbody id="fileListWorkspace">
-                        <tr>
-                            <td colspan="4" style="text-align:center;"><i
-                                    class="fa-solid fa-spinner fa-spin"></i> Loading...</td>
-                        </tr>
+                        <tbody id="ledgerList">
+                            <tr>
+                                <td colspan="4" style="text-align:center;">Loading ledger...</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
-    </div>
+        <div id="createWorkspaceModal" class="modal">
+            <div class="modal-content" style="max-width: 450px;">
+                <span class="close-modal" onclick="closeWorkspaceModal()">&times;</span>
+                <h2 style="margin-bottom: 15px; color:#0f172a;"><i class="fa-solid fa-folder-plus"
+                        style="color:var(--workspace);"></i> New Workspace</h2>
+                <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:20px;">Allocate a portion of your
+                    total storage to a dedicated team folder.</p>
 
-    <div id="profile-view" class="view-section">
-        <div class="dashboard-grid">
-            <div class="card">
-                <div class="card-header"><i class="fa-solid fa-gem" style="color: var(--workspace);"></i> Billing &
-                    Subscription</div>
-                <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px;"
-                     id="subStatus">
-                    <i class="fa-solid fa-spinner fa-spin"></i> Loading plan...
+                <div class="form-group">
+                    <label>Workspace Name</label>
+                    <input type="text" id="wsName" placeholder="e.g., Marketing Assets"
+                        style="width:100%; padding:12px; border:1px solid var(--border); border-radius:6px; margin-bottom:15px; outline:none;">
                 </div>
-                <div id="dateStatus"
-                     style="font-size: 0.9rem; color: var(--text-main); margin-bottom: 20px; padding: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; font-weight: 500;">
+
+                <div class="form-group">
+                    <label>Allocate Storage (GB)</label>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                        <input type="range" id="wsStorageSlider" min="1" max="100" value="5"
+                            style="flex:1; cursor:pointer;"
+                            oninput="document.getElementById('wsStorageValue').innerText = this.value + ' GB'">
+                        <span id="wsStorageValue"
+                            style="font-weight: 600; color: var(--primary); width: 60px; text-align: right;">5 GB</span>
+                    </div>
+                    <p style="font-size: 0.8rem; color: var(--warning);" id="wsAvailableText">Calculating available
+                        quota...</p>
                 </div>
 
-                <div id="upgradeButtons" style="display: grid; gap: 10px;">
-                    <button class="btn" style="background:#10b981; color:white;"
-                            onclick="redirectToStripe('Premium')"><i class="fa-solid fa-credit-card"></i> Upgrade to
-                        Premium (RM40/mo)</button>
-                    <button class="btn" style="background:#8b5cf6; color:white;"
-                            onclick="redirectToStripe('Enterprise')"><i class="fa-solid fa-building"></i> Upgrade to
-                        Enterprise (RM120/mo)</button>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-header"><i class="fa-solid fa-shield-halved" style="color: var(--primary);"></i>
-                    Security Settings</div>
-                <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom:20px; line-height: 1.5;">Your
-                    files are encrypted using AES-256 standard and access logs are permanently recorded on the
-                    Ethereum Sepolia network.</p>
-
-                <div
-                        style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid var(--border);">
-                    <h4 style="margin-bottom: 15px; font-size: 1rem;">Update Encryption Password</h4>
-                    <input type="password" id="currentPassword" placeholder="Current Password"
-                           style="width:100%; padding:12px; border:1px solid var(--border); border-radius:6px; margin-bottom:10px; outline:none;">
-                    <input type="password" id="newPassword" placeholder="New Strong Password"
-                           style="width:100%; padding:12px; border:1px solid var(--border); border-radius:6px; margin-bottom:15px; outline:none;">
-                    <button class="btn btn-primary" id="btnConfirmReset" onclick="processPasswordReset()"><i
-                            class="fa-brands fa-ethereum"></i> Reset & Log to Sepolia</button>
-                    <div id="resetMessage" style="margin-top: 15px; font-weight: 500; font-size: 0.9rem;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div id="createWorkspaceModal" class="modal">
-        <div class="modal-content" style="max-width: 450px;">
-            <span class="close-modal" onclick="closeWorkspaceModal()">&times;</span>
-            <h2 style="margin-bottom: 15px; color:#0f172a;"><i class="fa-solid fa-folder-plus"
-                                                               style="color:var(--workspace);"></i> New Workspace</h2>
-            <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:20px;">Allocate a portion of your
-                total storage to a dedicated team folder.</p>
-
-            <div class="form-group">
-                <label>Workspace Name</label>
-                <input type="text" id="wsName" placeholder="e.g., Marketing Assets"
-                       style="width:100%; padding:12px; border:1px solid var(--border); border-radius:6px; margin-bottom:15px; outline:none;">
-            </div>
-
-            <div class="form-group">
-                <label>Allocate Storage (GB)</label>
-                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
-                    <input type="range" id="wsStorageSlider" min="1" max="100" value="5"
-                           style="flex:1; cursor:pointer;"
-                           oninput="document.getElementById('wsStorageValue').innerText = this.value + ' GB'">
-                    <span id="wsStorageValue"
-                          style="font-weight: 600; color: var(--primary); width: 60px; text-align: right;">5 GB</span>
-                </div>
-                <p style="font-size: 0.8rem; color: var(--warning);" id="wsAvailableText">Calculating available
-                    quota...</p>
-            </div>
-
-            <button class="btn btn-workspace" id="btnCreateWorkspace" onclick="submitNewWorkspace()"
+                <button class="btn btn-workspace" id="btnCreateWorkspace" onclick="submitNewWorkspace()"
                     style="padding:15px; margin-top: 10px;">
-                <i class="fa-solid fa-hammer"></i> Create Workspace
-            </button>
-            <div id="wsCreateMessage"
-                 style="margin-top: 15px; font-weight: 500; font-size: 0.9rem; text-align: center;"></div>
-        </div>
-    </div>
-</main>
-<div id="nlpReportModal" class="modal" style="display: none;">
-    <div class="modal-content" style="max-width: 600px;">
-        <span class="close-modal" onclick="document.getElementById('nlpReportModal').style.display='none'">&times;</span>
-        <h2 style="margin-bottom: 15px; color:#0f172a;">
-            <i class="fa-solid fa-file-contract" style="color:var(--primary);"></i> Compliance Report
-        </h2>
-
-        <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-            <div style="flex: 1; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
-                <p style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Risk Score</p>
-                <h3 id="modalRiskScore" style="font-size: 2rem; color: var(--primary); margin: 5px 0;">--</h3>
-            </div>
-            <div style="flex: 1; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
-                <p style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Classification</p>
-                <h3 id="modalClassification" style="font-size: 1.2rem; color: var(--warning); margin: 10px 0;">--</h3>
+                    <i class="fa-solid fa-hammer"></i> Create Workspace
+                </button>
+                <div id="wsCreateMessage"
+                    style="margin-top: 15px; font-weight: 500; font-size: 0.9rem; text-align: center;"></div>
             </div>
         </div>
+    </main>
+    <div id="nlpReportModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <span class="close-modal" onclick="document.getElementById('nlpReportModal').style.display='none'">&times;</span>
+            <h2 style="margin-bottom: 15px; color:#0f172a;">
+                <i class="fa-solid fa-file-contract" style="color:var(--primary);"></i> Compliance Report
+            </h2>
 
-        <div style="background: #fffbeb; border: 1px solid #fde68a; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-            <h4 style="font-size: 0.9rem; margin-bottom: 10px; color: #b45309;">Detected Keywords:</h4>
-            <div id="modalKeywords" style="font-size: 0.85rem; color: #92400e; font-family: monospace;">None</div>
-        </div>
+            <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                <div style="flex: 1; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
+                    <p style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Risk Score</p>
+                    <h3 id="modalRiskScore" style="font-size: 2rem; color: var(--primary); margin: 5px 0;">--</h3>
+                </div>
+                <div style="flex: 1; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
+                    <p style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Classification</p>
+                    <h3 id="modalClassification" style="font-size: 1.2rem; color: var(--warning); margin: 10px 0;">--</h3>
+                </div>
+            </div>
 
-        <h4 style="font-size: 1rem; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 5px;">PII Redactions</h4>
-        <div style="max-height: 200px; overflow-y: auto; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 10px;">
-            <table style="width: 100%; font-size: 0.85rem;">
-                <tbody id="modalPiiList">
-                </tbody>
-            </table>
+            <div style="background: #fffbeb; border: 1px solid #fde68a; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <h4 style="font-size: 0.9rem; margin-bottom: 10px; color: #b45309;">Detected Keywords:</h4>
+                <div id="modalKeywords" style="font-size: 0.85rem; color: #92400e; font-family: monospace;">None</div>
+            </div>
+
+            <h4 style="font-size: 1rem; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 5px;">PII Redactions</h4>
+            <div style="max-height: 200px; overflow-y: auto; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 10px;">
+                <table style="width: 100%; font-size: 0.85rem;">
+                    <tbody id="modalPiiList">
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

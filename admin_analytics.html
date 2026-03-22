@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Analytics - BCDS Command Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./public/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+
+<header class="header-hud" style="justify-content: flex-start; gap: 30px;">
+    <button class="btn-action" style="background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-primary);" onclick="window.location.href='admin_panel.html'">
+        <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+    </button>
+    <div class="brand">
+        🛡️ BCDS <span class="text-blue">SYSTEM ANALYTICS</span>
+    </div>
+    <div style="margin-left: auto;">
+        <button class="btn-action" style="background: var(--accent-blue); padding: 8px 15px;" id="btn-export-analytics">
+            <i class="fa-solid fa-file-pdf"></i> Download Master Report
+        </button>
+    </div>
+</header>
+
+<div id="analytics-report-zone" style="display: flex; flex-direction: column; gap: 20px;">
+
+    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px;">
+        <div class="panel">
+            <div class="panel-header"><i class="fa-solid fa-chart-pie"></i> Event Distribution</div>
+            <div style="padding: 15px; height: 250px; display: flex; justify-content: center;">
+                <canvas id="distributionChart"></canvas>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header"><i class="fa-solid fa-chart-line"></i> 7-Day Event Velocity</div>
+            <div style="padding: 15px; height: 250px;">
+                <canvas id="velocityChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="flex: 1;">
+        <div class="panel-header">
+            <span><i class="fa-solid fa-server"></i> Immutable System Logs</span>
+        </div>
+
+        <div class="panel-toolbar">
+            <div class="filter-group">
+                <i class="fa-solid fa-magnifying-glass text-secondary"></i>
+                <input type="text" id="logSearch" class="filter-input" placeholder="Search message, user, IP..." style="width: 250px;">
+            </div>
+            <div class="filter-group">
+                <span class="hud-label" style="margin-bottom: 0;">Event Type:</span>
+                <select id="logTypeFilter" class="filter-select">
+                    <option value="all">All Events</option>
+                    <option value="AUTH">Authentication</option>
+                    <option value="SECURITY">Security / Critical</option>
+                    <option value="UPLOAD">File Uploads</option>
+                    <option value="WORKER">Background Jobs</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="watchlist-table">
+                <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Type</th>
+                    <th>Message</th>
+                    <th>IP Address</th>
+                    <th>Location</th>
+                </tr>
+                </thead>
+                <tbody id="analytics-table-body">
+                </tbody>
+            </table>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: rgba(0,0,0,0.2); border-top: 1px solid var(--border-color);">
+            <div style="font-size: 0.85rem; color: var(--text-secondary);" id="pagination-info">
+                Showing 1-10 of 108 logs
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-action" id="btn-prev-page" style="background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-primary);">
+                    <i class="fa-solid fa-chevron-left"></i> Prev
+                </button>
+                <button class="btn-action" id="btn-next-page" style="background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-primary);">
+                    Next <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script type="module" src="./public/js/dashboard/analytics.js"></script>
+</body>
+</html>

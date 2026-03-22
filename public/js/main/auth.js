@@ -50,7 +50,7 @@ async function handleAuth(e, type) {
 
     try {
         // Notice I kept your updated port 5002 here!
-        const res = await fetch(`http://127.0.0.1:5002${endpoint}`, {
+        const res = await fetch(`http://127.0.0.1:5001${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)

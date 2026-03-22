@@ -10,16 +10,16 @@
 </head>
 <body>
 
-<div class="auth-container">
-    <div class="auth-header">
-        <i class="fa-solid fa-shield-halved"></i>
-        <h1>BCDS Secure Cloud</h1>
-    </div>
+    <div class="auth-container">
+        <div class="auth-header">
+            <i class="fa-solid fa-shield-halved"></i>
+            <h1>BCDS Secure Cloud</h1>
+        </div>
 
-    <div class="toggle-btns">
-        <div class="toggle-btn active" onclick="switchForm('login')" id="btn-login">Sign In</div>
-        <div class="toggle-btn" onclick="switchForm('register')" id="btn-register">Create Account</div>
-    </div>
+        <div class="toggle-btns">
+            <div class="toggle-btn active" onclick="switchForm('login')" id="btn-login">Sign In</div>
+            <div class="toggle-btn" onclick="switchForm('register')" id="btn-register">Create Account</div>
+        </div>
 
     <form id="login-form" onsubmit="handleAuth(event, 'login')">
         <div class="form-group">
@@ -40,24 +40,24 @@
         </button>
     </form>
 
-    <form id="register-form" onsubmit="handleAuth(event, 'register')">
-        <div class="form-group">
-            <label>Username</label>
-            <input type="text" id="reg-username" placeholder="John Doe">
-        </div>
-        <div class="form-group">
-            <label>Email Address</label>
-            <input type="email" id="reg-email" placeholder="name@example.com">
-        </div>
-        <div class="form-group">
-            <label>Password</label>
-            <input type="password" id="reg-password" placeholder="Create a strong password">
-        </div>
-        <button type="submit" class="btn" id="reg-submit">Create Account</button>
-    </form>
+        <form id="register-form" onsubmit="handleAuth(event, 'register')">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="reg-username" placeholder="John Doe">
+            </div>
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" id="reg-email" placeholder="name@example.com">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="reg-password" placeholder="Create a strong password">
+            </div>
+            <button type="submit" class="btn" id="reg-submit">Create Account</button>
+        </form>
 
-    <div id="error-message" class="error-msg"></div>
-</div>
+        <div id="error-message" class="error-msg"></div>
+    </div>
 
 <script src="./public/js/main/auth.js"></script>
 </body>

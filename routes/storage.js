@@ -3,12 +3,21 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const User = require('../models/User');
 const File = require('../models/File');
-const Activity = require('../models/Activity');
+const Activity = require('../models/Activity'); // FIX: Added missing import
 const multer = require('multer');
 const AWS = require('aws-sdk');
+const { logToBlockchain } = require('./blockchain'); // Add this near your imports
+const { ethers } = require('ethers');
+const fs = require('fs');
 const Queue = require('bull');
 const { addLog } = require('../utils/logger');
 const nlpQueue = new Queue('nlp-scanning', process.env.REDIS_URL || 'redis://127.0.0.1:6379');
+// Connect to Ganache
+const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:7545";
+const provider = new ethers.JsonRpcProvider(RPC_URL);
+// For reading data, we don't even need a private key!
+const contractABI = JSON.parse(fs.readFileSync('./contractABI.json', 'utf8'));
+const aclContract = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractABI, provider);
 
 const s3 = new AWS.S3({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -17,7 +26,6 @@ const s3 = new AWS.S3({
 });
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- HELPER FUNCTION LOGS ---
 async function getTargetDrive(req) {
     const driveId = req.query.drive || 'personal';
     console.log(`🔍 [STORAGE API] getTargetDrive: Resolving drive access for ID: ${driveId}`);
@@ -57,9 +65,7 @@ async function getTargetDrive(req) {
     throw { status: 403, msg: "Unauthorized: You do not have access to this folder." };
 }
 
-// ==========================================
-// ROUTES
-// ==========================================
+// routes/storage.js
 
 router.post('/upload', [auth, upload.single('file')], async (req, res) => {
     console.log(`\n📤 [STORAGE API] POST /upload started by user ${req.user.id}`);
@@ -76,12 +82,15 @@ router.post('/upload', [auth, upload.single('file')], async (req, res) => {
     console.log(`[DEBUG] Requires NLP? ${requiresNlp}`);
 
     try {
+        // 1. Fetch targetOwner FIRST to avoid ReferenceErrors
         const targetOwner = await getTargetDrive(req);
 
+        // 2. CHECK STORAGE LIMITS
         if (targetOwner.storageUsed + req.file.size > targetOwner.storageLimit) {
             return res.status(400).json({ msg: "Upload failed: Not enough storage space." });
         }
 
+        // 3. Determine Folder Path & Location Name
         let folderPath = 'personal';
         let locationName = "Personal Drive";
 
@@ -91,6 +100,7 @@ router.post('/upload', [auth, upload.single('file')], async (req, res) => {
             locationName = workspace ? `workspace "${workspace.name}"` : "a shared workspace";
         }
 
+        // 4. AWS S3 Upload
         const s3Key = `${targetOwner.email}/${folderPath}/${Date.now()}-${req.file.originalname}`;
         console.log(`[STORAGE API] Uploading to AWS S3... Key: ${s3Key}`);
 
@@ -103,7 +113,7 @@ router.post('/upload', [auth, upload.single('file')], async (req, res) => {
             ContentType: req.file.mimetype
         }).promise();
 
-        console.log(`[STORAGE API] AWS Upload successful. Saving to MongoDB...`);
+        // 5. Save File record to MongoDB
         const newFile = new File({
             owner: targetOwner._id,
             uploadedBy: req.user.id,
@@ -118,6 +128,16 @@ router.post('/upload', [auth, upload.single('file')], async (req, res) => {
 
         await newFile.save();
 
+        // ---> NEW: 5.5 LOG TO BLOCKCHAIN <---
+        try {
+            await logToBlockchain(newFile._id.toString());
+            console.log(`⛓️ Block mined successfully for file: ${newFile.fileName}`);
+        } catch (chainErr) {
+            console.error("Blockchain logging failed:", chainErr.message);
+            // We log the error but don't stop the upload process
+        }
+
+        // 6. Update Owner Storage Usage
         targetOwner.storageUsed += req.file.size;
         await targetOwner.save();
 
@@ -148,6 +168,7 @@ router.post('/upload', [auth, upload.single('file')], async (req, res) => {
             console.error("⚠️ [STORAGE API] Activity logging failed:", logErr.message);
         }
 
+        // 8. Success Response
         return res.status(200).json({ msg: "Uploaded!", file: newFile });
 
     } catch (err) {
@@ -164,7 +185,6 @@ router.get('/files', auth, async (req, res) => {
 
     try {
         const targetOwner = await getTargetDrive(req);
-
         const filter = {
             owner: targetOwner._id,
             workspaceId: driveId === 'personal' ? null : driveId
@@ -185,13 +205,17 @@ router.get('/files', auth, async (req, res) => {
 router.delete('/files/:id', auth, async (req, res) => {
     console.log(`\n🗑️ [STORAGE API] DELETE /files/${req.params.id} requested by user: ${req.user.id}`);
     try {
+        // 1. Fetch the file first so we can check permissions
         const file = await File.findById(req.params.id);
         if (!file) {
             console.warn(`⚠️ [STORAGE API] Delete aborted: File not found in DB.`);
             return res.status(404).json({ msg: "File not found" });
         }
 
+        // 2. Fetch the owner of the storage (Personal or Workspace)
         const targetOwner = await User.findById(file.owner);
+
+        // 3. Define the permission variables after fetching the data
         const isWorkspaceOwner = targetOwner._id.toString() === req.user.id;
         const isFileUploader = file.uploadedBy.toString() === req.user.id;
 
@@ -208,12 +232,15 @@ router.delete('/files/:id', auth, async (req, res) => {
         console.log(`[STORAGE API] Removing file record from MongoDB...`);
         await File.findByIdAndDelete(req.params.id);
 
+        // 7. Reclaim storage space for the owner
         targetOwner.storageUsed = Math.max(0, targetOwner.storageUsed - file.fileSize);
         await targetOwner.save();
         console.log(`✅ [STORAGE API] Delete sequence complete.`);
 
+        // 8. Log the activity 
         if (typeof Activity !== 'undefined') {
             try {
+                // Define variables BEFORE creating the new Activity object
                 const workspace = file.workspaceId ? targetOwner.workspacesCreated.id(file.workspaceId) : null;
                 const location = workspace ? `from workspace "${workspace.name}"` : 'from personal drive';
 
@@ -243,6 +270,29 @@ router.get('/download/:id', auth, async (req, res) => {
             return res.status(404).json({ msg: "File not found" });
         }
 
+        // --- BLOCKCHAIN ACCESS CONTROL ENFORCEMENT ---
+        if (file.workspaceId) {
+            console.log(`Checking Blockchain: Workspace ${file.workspaceId} | User ${req.user.id}`);
+
+            // 1. Get status from Smart Contract
+            const hasAccess = await aclContract.checkAccess(
+                file.workspaceId.toString(),
+                req.user.id.toString()
+            );
+
+            // 2. Check if user is the Owner (Owners bypass ACL usually)
+            const isOwner = file.owner.toString() === req.user.id.toString();
+
+            if (!isOwner && !hasAccess) {
+                console.log("❌ Blockchain Denied Access.");
+                return res.status(403).json({
+                    msg: "Blockchain ACL Denied: Access revoked or not granted on-chain."
+                });
+            }
+            console.log("✅ Blockchain Granted Access.");
+        }
+
+        // --- AWS S3 STREAMING ---
         const params = {
             Bucket: process.env.AWS_BUCKET_NAME,
             Key: file.s3Key
@@ -250,8 +300,15 @@ router.get('/download/:id', auth, async (req, res) => {
 
         console.log(`✅ [STORAGE API] Piping file stream from AWS S3 to client... Key: ${file.s3Key}`);
         const fileStream = s3.getObject(params).createReadStream();
+        
+        fileStream.on('error', (err) => {
+            console.error("S3 Stream Error:", err);
+            res.status(404).json({ msg: "File not found in S3" });
+        });
+
         res.attachment(file.fileName);
         fileStream.pipe(res);
+
     } catch (err) {
         console.error("💥 [STORAGE API] CRITICAL DOWNLOAD ERROR:", err);
         res.status(500).send('Server Error');

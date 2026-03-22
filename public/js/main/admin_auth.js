@@ -34,7 +34,7 @@ async function handleAdminAuth(e) {
 
     try {
         // Notice the port is 5002 and we hit the specific admin login endpoint
-        const res = await fetch('http://127.0.0.1:5002/api/admin/login', {
+        const res = await fetch('http://127.0.0.1:5001/api/admin/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
