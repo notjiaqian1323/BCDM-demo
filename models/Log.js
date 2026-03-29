@@ -1,4 +1,5 @@
-const mongoose = require('mongoose');
+// models/Log.js - ESM Version
+import mongoose from 'mongoose';
 
 const LogSchema = new mongoose.Schema({
     type: { type: String, required: true }, // e.g., 'SECURITY', 'UPLOAD', 'REGISTER'
@@ -8,19 +9,20 @@ const LogSchema = new mongoose.Schema({
     // 🌐 Network Telemetry (Crucial for Velocity/Fraud detection)
     endpoint: { type: String },
     ipAddress: { type: String },
-    location: { type: String, default: 'Unknown' }, // <--- ADD THIS
+    location: { type: String, default: 'Unknown' },
     userAgent: { type: String },
 
     // 👤 Optional relation (if the action was done by a logged-in user)
+    // Ensure this string matches the model name in User.js
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
     // 🕒 Timestamps
     timestamp: { type: Date, default: Date.now }
 });
 
-// 🚀 Pro-Tip: Indexing for Speed
-// We index the timestamp and ipAddress because we will query them heavily
+// 🚀 Indexing for Speed
 LogSchema.index({ timestamp: -1 });
 LogSchema.index({ ipAddress: 1, timestamp: -1 });
 
-module.exports = mongoose.model('Log', LogSchema);
+// Exporting the model as default for ESM
+export default mongoose.model('Log', LogSchema);

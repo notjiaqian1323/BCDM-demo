@@ -1,12 +1,24 @@
-const express = require('express');
+import express from 'express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import { ethers } from 'ethers';
+import AWS from 'aws-sdk';
+import Stripe from 'stripe';
+
+// Models & Middleware (🚨 Extensions required)
+import auth from '../middleware/auth.js';
+import User from '../models/User.js';
+import FileModel from '../models/File.js';
+import Invitation from '../models/Invitation.js';
+import Activity from '../models/Activity.js';
+
+// ESM __dirname Shim
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const router = express.Router();
-const auth = require('../middleware/auth');
-const User = require('../models/User');
-const FileModel = require('../models/File'); // Renamed to avoid TypeError
-const Invitation = require('../models/Invitation');
-const Activity = require('../models/Activity');
-const AWS = require('aws-sdk');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const s3 = new AWS.S3({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -58,8 +70,6 @@ router.get('/status', auth, async (req, res) => {
         }));
 
         // 3. FETCH PERSISTENT ACTIVITY FEED
-        // This pulls from the Activity collection to ensure 28 vs 27 is correct
-        // 2. UPDATED LOGIC: Pull logs for user OR actions in their owned workspaces
         const activityFeedRaw = await Activity.find({
             $or: [
                 { userId: req.user.id }
@@ -71,7 +81,6 @@ router.get('/status', auth, async (req, res) => {
         const activityFeed = activityFeedRaw.map(act => {
             let displayUser = user.username;
 
-            // If the activity is an invite YOU accepted, you are the actor.
             if (act.type === 'INVITE_ACCEPTED') {
                 displayUser = user.username;
             }
@@ -90,7 +99,7 @@ router.get('/status', auth, async (req, res) => {
             used: user.storageUsed,
             userEmail: user.email,
             username: user.username,
-            subscriptionEnd: user.subscriptionEnd, // Send expiry date to frontend
+            subscriptionEnd: user.subscriptionEnd,
             workspaces: sharedWorkspaces,
             workspacesCreated: user.workspacesCreated,
             inbox,
@@ -98,13 +107,11 @@ router.get('/status', auth, async (req, res) => {
             activityFeed
         });
     } catch (err) {
-    console.error("💥 Status Route Error:", err.message);
-    // 🛡️ NEW: Always return JSON!
-    res.status(500).json({ msg: 'Server Error', error: err.message });
-}
+        console.error("💥 Status Route Error:", err.message);
+        res.status(500).json({ msg: 'Server Error', error: err.message });
+    }
 });
 
-// --- UPDATED WORKSPACE CREATION WITH LOGGING ---
 // @route   POST /api/subscription/workspaces
 router.post('/workspaces', auth, async (req, res) => {
     const { name, allocateGB } = req.body;
@@ -117,8 +124,6 @@ router.post('/workspaces', auth, async (req, res) => {
 
         const requestedBytes = (parseInt(allocateGB) || 1) * 1024 * 1024 * 1024;
 
-        // --- NEW QUOTA CALCULATION ---
-        // Sum up bytes already allocated to other workspaces
         const alreadyAllocated = user.workspacesCreated.reduce((acc, ws) => acc + ws.allocatedBytes, 0);
         const remainingQuota = user.storageLimit - alreadyAllocated;
 
@@ -129,19 +134,16 @@ router.post('/workspaces', auth, async (req, res) => {
             });
         }
 
-        // --- UNIQUE NAME CHECK ---
         const workspaceName = name.trim();
         if (user.workspacesCreated.some(ws => ws.name.toLowerCase() === workspaceName.toLowerCase())) {
             return res.status(400).json({ msg: `Workspace "${workspaceName}" already exists.` });
         }
 
-        // AWS S3: Create unique folder
         await s3.putObject({
             Bucket: process.env.AWS_BUCKET_NAME,
             Key: `${user.email}/${workspaceName}/`
         }).promise();
 
-        // Database: Save workspace details
         user.workspacesCreated.push({
             name: workspaceName,
             allocatedBytes: requestedBytes
@@ -149,7 +151,6 @@ router.post('/workspaces', auth, async (req, res) => {
 
         await user.save();
 
-        // Activity Log
         await new Activity({
             userId: req.user.id,
             type: 'WORKSPACE_CREATED',
@@ -166,20 +167,15 @@ router.post('/workspaces', auth, async (req, res) => {
 router.post('/share', auth, async (req, res) => {
     const { emailToShare, workspaceId } = req.body;
     try {
-        // 1. Fetch the current user (the inviter)
         const user = await User.findById(req.user.id);
-
-        // 2. Define the invitee email first
         const inviteeEmail = emailToShare.toLowerCase().trim();
 
-        // 3. NOW you can check if they are the same
         if (inviteeEmail === user.email.toLowerCase()) {
             return res.status(400).json({
                 msg: "You cannot invite yourself to your own workspace."
             });
         }
 
-        // 4. Check for existing pending invites
         const existingInvite = await Invitation.findOne({
             inviteeEmail,
             workspaceId,
@@ -190,7 +186,6 @@ router.post('/share', auth, async (req, res) => {
             return res.status(400).json({ msg: "A pending invitation already exists for this user." });
         }
 
-        // 5. Save the new invitation
         const newInvite = new Invitation({
             inviter: req.user.id,
             inviteeEmail,
@@ -223,33 +218,26 @@ router.post('/accept-invite/:id', auth, async (req, res) => {
 
         invite.status = 'accepted';
 
-        // --- UPDATED: SYNC TO BLOCKCHAIN WITH TIMEOUT ---
         try {
-            const { ethers } = require('ethers');
-            const fs = require('fs');
-
-            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:7545");
-            // Check connection first
+            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:8545");
             await provider.getNetwork();
 
             const wallet = new ethers.Wallet(process.env.SERVER_PRIVATE_KEY, provider);
-            const contractABI = JSON.parse(fs.readFileSync('./contractABI.json', 'utf8'));
+            // Reusing __dirname shim for path resolution
+            const contractABI = JSON.parse(fs.readFileSync(path.join(__dirname, '../contractABI.json'), 'utf8'));
             const aclContract = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractABI, wallet);
 
             console.log("🔗 Connecting to Blockchain...");
             const tx = await aclContract.grantAccess(invite.workspaceId.toString(), req.user.id.toString());
-            // Wait for 1 confirmation
             await tx.wait(1);
             console.log(`✅ Blockchain ACL Updated`);
 
         } catch (chainErr) {
             console.error("🛑 BLOCKCHAIN SYNC FAILED:", chainErr.message);
-            // Optional: Tell the user it worked in DB but blockchain is pending
             return res.status(500).json({ msg: "Blockchain connection error. Please ensure Ganache is running." });
         }
         await invite.save(); await invitee.save(); await inviter.save();
 
-        // PERSISTENT LOG FOR JOINING
         await new Activity({
             userId: req.user.id,
             type: 'INVITE_ACCEPTED',
@@ -259,8 +247,6 @@ router.post('/accept-invite/:id', auth, async (req, res) => {
         res.json({ msg: "Joined successfully!" });
     } catch (err) { res.status(500).send('Server Error'); }
 });
-
-
 
 // @route   DELETE /api/subscription/workspaces/:id
 router.delete('/workspaces/:id', auth, async (req, res) => {
@@ -275,31 +261,20 @@ router.delete('/workspaces/:id', auth, async (req, res) => {
         const wsName = workspace.name;
         const wsIdString = req.params.id.toString();
 
-        // --- NEW: STEP 0 - BLOCKCHAIN CLEANUP ---
-        // We revoke the owner's permission on-chain before deleting the data
         try {
-            const { ethers } = require('ethers');
-            const fs = require('fs');
-            const path = require('path');
-
-            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:7545");
+            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:8545");
             const wallet = new ethers.Wallet(process.env.SERVER_PRIVATE_KEY.trim(), provider);
             const contractABI = JSON.parse(fs.readFileSync(path.join(__dirname, '../contractABI.json'), 'utf8'));
             const aclContract = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractABI, wallet);
 
             console.log(`⛓️ Revoking Blockchain Access for deletion: Workspace ${wsIdString}`);
-            
-            // Revoke the owner's access on the ledger
             const tx = await aclContract.revokeAccess(wsIdString, req.user.id.toString());
-            await tx.wait(); 
-            
+            await tx.wait();
             console.log("✅ Blockchain ACL Cleaned.");
         } catch (chainErr) {
             console.error("🛑 Blockchain Revoke Failed during deletion:", chainErr.message);
-            // We continue with deletion even if blockchain fails so the user can reclaim quota
         }
 
-        // 1. AWS S3: Clean up the cloud folder
         try {
             const folderPath = `${user.email}/${wsName}/`;
             const objects = await s3.listObjectsV2({ Bucket: process.env.AWS_BUCKET_NAME, Prefix: folderPath }).promise();
@@ -314,20 +289,16 @@ router.delete('/workspaces/:id', auth, async (req, res) => {
             console.warn("S3 folder already empty or missing.");
         }
 
-        // 2. Database: Reclaim the quota and remove the workspace
         user.workspacesCreated.pull({ _id: req.params.id });
         await user.save();
 
-        // 3. Global Cleanup: Remove access for anyone you invited
         await User.updateMany(
             { workspacesJoined: req.params.id },
             { $pull: { workspacesJoined: req.params.id } }
         );
 
-        // --- NEW BUG FIX: PURGE DANGLING INVITATIONS ---
         await Invitation.deleteMany({ workspaceId: req.params.id });
 
-        // Activity Log
         await new Activity({
             userId: req.user.id,
             type: 'WORKSPACE_DELETED',
@@ -345,44 +316,32 @@ router.delete('/workspaces/:id', auth, async (req, res) => {
 router.delete('/revoke-invite/:id', auth, async (req, res) => {
     try {
         const invite = await Invitation.findById(req.params.id);
-
         if (!invite) return res.status(404).json({ msg: "Invitation not found." });
-
-        // Ensure only the person who sent the invite can revoke it
         if (invite.inviter.toString() !== req.user.id) {
             return res.status(401).json({ msg: "Unauthorized: You did not send this invite." });
         }
-
-        // Only allow revoking if it hasn't been accepted yet
         if (invite.status !== 'pending') {
             return res.status(400).json({ msg: "Cannot revoke an invite that is already accepted or declined." });
         }
-
         await Invitation.findByIdAndDelete(req.params.id);
         res.json({ msg: "Invitation revoked successfully." });
     } catch (err) { res.status(500).send('Server Error'); }
 });
 
-// @route   DELETE /api/subscription/reject-invite/:id
+// @route   POST /api/subscription/reject-invite/:id
 router.post('/reject-invite/:id', auth, async (req, res) => {
     try {
         const invite = await Invitation.findById(req.params.id);
         if (!invite) return res.status(404).json({ msg: "Invitation not found." });
-
-        // Ensure the person rejecting is the intended invitee
         const user = await User.findById(req.user.id);
         if (invite.inviteeEmail !== user.email.toLowerCase()) {
             return res.status(401).json({ msg: "Unauthorized" });
         }
-
-        invite.status = 'declined'; // Or simply delete it
+        invite.status = 'declined';
         await invite.save();
-        // Option: await Invitation.findByIdAndDelete(req.params.id); 
-
         res.json({ msg: "Invitation declined." });
     } catch (err) { res.status(500).send('Server Error'); }
 });
-
 
 // @route   POST /api/subscription/create-checkout
 router.post('/create-checkout', auth, async (req, res) => {
@@ -393,18 +352,9 @@ router.post('/create-checkout', auth, async (req, res) => {
             'Enterprise': 'price_1T7X7SPIa2p1PtKTqT2PlQeS'
         };
 
-        // 🐛 DEBUG LOGGER 1: Check what origin the backend actually sees
-        console.log("\n🔍 [STRIPE DEBUG] req.headers.origin:", req.headers.origin);
-        console.log("🔍 [STRIPE DEBUG] req.headers.referer:", req.headers.referer);
-
-        // Capture the exact origin domain the user is currently on
-        // Note: It's safer to check referer if origin is missing in some browsers
         const domainUrl = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:63342';
-
-        // 🐛 DEBUG LOGGER 2: What exact URLs are we sending to Stripe?
         const successUrl = `${domainUrl}/BCDM-demo/dashboard.html?success=true`;
         const cancelUrl = `${domainUrl}/BCDM-demo/dashboard.html?canceled=true`;
-        console.log("🔍 [STRIPE DEBUG] success_url configured as:", successUrl);
 
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
@@ -417,9 +367,6 @@ router.post('/create-checkout', auth, async (req, res) => {
             cancel_url: cancelUrl,
             client_reference_id: req.user.id
         });
-
-        // 🐛 DEBUG LOGGER 3: Confirm session creation
-        console.log("✅ [STRIPE DEBUG] Session created successfully. ID:", session.id);
 
         res.json({ id: session.id });
     } catch (err) {
@@ -435,15 +382,11 @@ router.post('/customer-portal', auth, async (req, res) => {
         if (!user.stripeCustomerId) {
             return res.status(400).json({ msg: "No active paid subscription found." });
         }
-
         const domainUrl = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:5001';
-
-        // Securely redirect to Stripe's hosted cancellation/renewal portal
         const session = await stripe.billingPortal.sessions.create({
             customer: user.stripeCustomerId,
             return_url: `${domainUrl}/dashboard.html`,
         });
-
         res.json({ url: session.url });
     } catch (err) {
         console.error(err);
@@ -463,32 +406,23 @@ router.post('/leave-workspace/:id', auth, async (req, res) => {
             return res.status(400).json({ msg: "You are not a member of this workspace." });
         }
 
-        // --- NEW: STEP 1.5 - REVOKE BLOCKCHAIN ACCESS ---
         try {
-            const { ethers } = require('ethers');
-            const fs = require('fs');
-            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:7545");
+            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:8545");
             const wallet = new ethers.Wallet(process.env.SERVER_PRIVATE_KEY, provider);
-            const contractABI = JSON.parse(fs.readFileSync('./contractABI.json', 'utf8'));
+            const contractABI = JSON.parse(fs.readFileSync(path.join(__dirname, '../contractABI.json'), 'utf8'));
             const aclContract = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractABI, wallet);
 
             console.log(`⛓️ Revoking Blockchain Access: User ${req.user.id} from Workspace ${req.params.id}`);
-
-            // Call the Smart Contract function
             const tx = await aclContract.revokeAccess(req.params.id.toString(), req.user.id.toString());
             await tx.wait();
-
             console.log("✅ Blockchain ACL Revoked.");
         } catch (chainErr) {
             console.error("Blockchain Revoke Failed:", chainErr.message);
-            // We continue so the user isn't stuck in a workspace they want to leave
         }
 
-        // Remove workspace from user's joined list (MongoDB)
         user.workspacesJoined.pull(req.params.id);
         await user.save();
 
-        // Activity Logging
         try {
             await new Activity({
                 userId: req.user.id,
@@ -507,4 +441,4 @@ router.post('/leave-workspace/:id', auth, async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

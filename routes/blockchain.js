@@ -1,12 +1,13 @@
-// routes/blockchain.js
-const express = require('express');
+// routes/blockchain.js - ESM Version
+import express from 'express';
+import crypto from 'node:crypto';
+import { ethers } from 'ethers';
+import BlockModel from '../models/Block.js'; // 🚨 Extension required
+
 const router = express.Router();
-const crypto = require('crypto');
-const { ethers } = require('ethers');
-const BlockModel = require('../models/Block');
 
 // Load Server Wallet Config
-const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:7545";
+const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
 const SERVER_PRIVATE_KEY = process.env.SERVER_PRIVATE_KEY;
 
 const calculateHash = (index, prevHash, timestamp, fileHash) => {
@@ -15,13 +16,22 @@ const calculateHash = (index, prevHash, timestamp, fileHash) => {
         .digest('hex');
 };
 
-const logToBlockchain = async (fileId) => {
+// Exported as a named export for internal server use
+export const logToBlockchain = async (fileId) => {
     // 1. Genesis Block Check
     const chainCount = await BlockModel.countDocuments();
     if (chainCount === 0) {
         const genTime = new Date().toISOString();
         const genHash = calculateHash(0, "0", genTime, "GENESIS");
-        await new BlockModel({ index: 0, timestamp: genTime, fileId: "0", fileHash: "GENESIS", prevHash: "0", hash: genHash, ethTxHash: "0x0" }).save();
+        await new BlockModel({
+            index: 0,
+            timestamp: genTime,
+            fileId: "0",
+            fileHash: "GENESIS",
+            prevHash: "0",
+            hash: genHash,
+            ethTxHash: "0x0"
+        }).save();
     }
 
     // 2. Prevent Duplicates
@@ -41,13 +51,13 @@ const logToBlockchain = async (fileId) => {
         try {
             const provider = new ethers.JsonRpcProvider(RPC_URL);
             const wallet = new ethers.Wallet(SERVER_PRIVATE_KEY, provider);
-            
+
             // Send a transaction to ourselves, embedding the block hash in the 'data' payload
             const tx = await wallet.sendTransaction({
                 to: wallet.address,
-                data: "0x" + newHash 
+                data: "0x" + newHash
             });
-            
+
             ethTxHash = tx.hash;
             console.log(`✅ Anchored to Ethereum! TxID: ${ethTxHash}`);
         } catch (error) {
@@ -58,13 +68,20 @@ const logToBlockchain = async (fileId) => {
 
     // 5. Save combined record to MongoDB
     const newBlock = new BlockModel({
-        index: newIndex, timestamp, fileId: fileId.toString(), fileHash, prevHash: latestBlock.hash, hash: newHash, ethTxHash
+        index: newIndex,
+        timestamp,
+        fileId: fileId.toString(),
+        fileHash,
+        prevHash: latestBlock.hash,
+        hash: newHash,
+        ethTxHash
     });
 
     await newBlock.save();
     return newBlock;
 };
 
+// @route   GET /api/blockchain/chain
 router.get('/chain', async (req, res) => {
     try {
         const chain = await BlockModel.find().sort({ index: 1 });
@@ -82,16 +99,5 @@ router.post('/log', async (req, res) => {
     }
 });
 
-// @route   GET /api/blockchain/chain
-// @desc    Retrieve the entire ledger for auditing
-router.get('/chain', async (req, res) => {
-    try {
-        const chain = await BlockModel.find().sort({ index: 1 });
-        res.json(chain);
-    } catch (err) {
-        res.status(500).send("Server Error");
-    }
-});
-
-module.exports = router;
-module.exports.logToBlockchain = logToBlockchain; // Export for internal server use
+// Export the router as the default
+export default router;

@@ -1,7 +1,8 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User'); // Import User model
+// middleware/auth.js - ESM Version
+import jwt from 'jsonwebtoken';
+import User from '../models/User.js'; // 🚨 Extension required
 
-module.exports = async function(req, res, next) {
+export default async function(req, res, next) {
     // 1. Get Token
     const token = req.header('x-auth-token');
     if (!token) {
@@ -12,8 +13,7 @@ module.exports = async function(req, res, next) {
         // 2. Verify Signature
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'mySuperSecretToken123');
 
-        // 3. FETCH REAL-TIME USER DATA (The Upgrade)
-        // We select only the fields we need for checks
+        // 3. FETCH REAL-TIME USER DATA
         const user = await User.findById(decoded.user.id).select('-password');
 
         if (!user) {
@@ -21,7 +21,6 @@ module.exports = async function(req, res, next) {
         }
 
         // 4. GLOBAL BAN CHECK (The Security Layer)
-        // If banned, reject EVERY request immediately
         if (user.checkBanStatus && user.checkBanStatus()) {
             return res.status(403).json({
                 msg: '⛔ Account Suspended.',
@@ -30,8 +29,7 @@ module.exports = async function(req, res, next) {
             });
         }
 
-        // If score is low (< 50) AND it has been X minutes since last penalty...
-        // Let's say: 5 Minutes Cooldown for Demo (In real life: 24 Hours)
+        // Cooldown Logic (5 Minutes for Demo)
         const COOLDOWN_MS = 5 * 60 * 1000;
 
         if (user.trustScore < 50 && user.lastPenaltyDate) {
@@ -39,10 +37,8 @@ module.exports = async function(req, res, next) {
 
             if (timeSincePenalty > COOLDOWN_MS) {
                 // HEAL THE USER
-                // Reset them to exactly 50 (Probation) so they can try again.
-                // Or add +10 points. Let's do reset to 50.
                 user.trustScore = 50;
-                user.lastPenaltyDate = null; // Clear penalty date
+                user.lastPenaltyDate = null;
                 await user.save();
 
                 console.log(`[Auth Middleware] 🩹 User ${user.username} healed to 50 points.`);
@@ -50,7 +46,6 @@ module.exports = async function(req, res, next) {
         }
 
         // 5. ATTACH FULL USER TO REQUEST
-        // Now 'req.user' is the actual database object, not just an ID!
         req.user = user;
 
         next();
@@ -58,4 +53,4 @@ module.exports = async function(req, res, next) {
         console.error(err);
         res.status(401).json({ msg: 'Token is not valid' });
     }
-};
+}

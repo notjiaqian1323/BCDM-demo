@@ -1,6 +1,10 @@
-gliner==0.1.6
+--extra-index-url https://download.pytorch.org/whl/cpu
+gliner>=0.1.6
+transformers>=4.38.0
+torch>=2.2.0
 pymupdf==1.23.8
 tqdm
 requests
-torch --index-url https://download.pytorch.org/whl/cpu
-hf_xet
+fastapi
+uvicorn
+pydantic

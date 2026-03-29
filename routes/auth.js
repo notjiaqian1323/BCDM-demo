@@ -1,11 +1,15 @@
-const express = require('express');
+// routes/auth.js - ESM Version
+import express from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+
+// --- Local Imports (🚨 CRITICAL: .js extensions required) ---
+import User from '../models/User.js';
+import auth from '../middleware/auth.js';
+import admin from '../middleware/admin.js';
+import { addLog } from '../utils/logger.js';
+
 const router = express.Router();
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const auth = require('../middleware/auth');
-const admin = require('../middleware/admin');
-const { addLog } = require('../utils/logger'); // ✅ Import Logger
 
 // @route   POST /api/auth/register
 router.post('/register', async (req, res) => {
@@ -20,7 +24,7 @@ router.post('/register', async (req, res) => {
         }
 
         user = new User({ username, email, password });
-        
+
         const salt = await bcrypt.genSalt(10);
         user.password = await bcrypt.hash(password, salt);
         await user.save();
@@ -90,10 +94,6 @@ router.post('/login', async (req, res) => {
         // 📝 LOG: Login Success
         addLog('AUTH', `User Login: ${user.username}. Role: [${user.role.toUpperCase()}]`);
 
-        // // Terminal Log (Keep this for your debugging comfort)
-        // const timestamp = new Date().toLocaleTimeString();
-        // console.log(`[${timestamp}] 🔑 LOGIN SUCCESS: User '${user.email}'`);
-
         jwt.sign(payload, process.env.JWT_SECRET || 'mySuperSecretToken123', { expiresIn: 36000 }, (err, token) => {
             if (err) addLog('ERROR', `Registration Crashed for ${email}: ${err.message}`);
             res.json({
@@ -134,19 +134,16 @@ router.get('/user', auth, async (req, res) => {
 });
 
 // --- 4. NEW: UI INTERACTION LOGGER ---
-// This endpoint receives "Ghost Signals" from the frontend (clicks, checkboxes)
-router.post('/log-ui', auth,  (req, res) => {
+router.post('/log-ui', auth, (req, res) => {
     const { action, details } = req.body;
 
     // 📝 LOG: Frontend Interaction
-    // Example: "User QIAN1215: Ticked Compliance Checkbox"
     addLog('UI_INTERACTION', `User ${req.user.username}: ${action}`, details);
 
     res.sendStatus(200);
 });
 
 // GET /api/auth/status
-// Lightweight check for polling
 router.get('/status', auth, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('isBanned banReason trustScore');
@@ -167,31 +164,18 @@ router.post('/reset-password', auth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     try {
         const user = await User.findById(req.user.id);
-        
-        // Verify current password
+
         const isMatch = await bcrypt.compare(currentPassword, user.password);
         if (!isMatch) return res.status(400).json({ msg: "Invalid current password" });
 
-        // Hash and save new password
         const salt = await bcrypt.genSalt(10);
         user.password = await bcrypt.hash(newPassword, salt);
         await user.save();
 
         res.json({ msg: "Your password has been updated successfully." });
-    } catch (err) { 
-        res.status(500).send("Server Error"); 
-    }
-});
-
-// @route   GET /api/auth/user
-// @desc    Get logged in user data (used to show the correct name on the dashboard)
-router.get('/user', auth, async (req, res) => {
-    try {
-        const user = await User.findById(req.user.id).select('-password');
-        res.json(user);
     } catch (err) {
-        res.status(500).send('Server Error');
+        res.status(500).send("Server Error");
     }
 });
 
-module.exports = router;
+export default router;
