@@ -1,11 +1,13 @@
-// routes/reports.js
-const express = require('express');
+// routes/reports.js - ESM Version
+import express from 'express';
 const router = express.Router();
-const auth = require('../middleware/auth');
-const User = require('../models/User');
-const File = require('../models/File');
-const Block = require('../models/Block');
-const Invitation = require('../models/Invitation');
+
+// --- Local Imports (🚨 CRITICAL: .js extensions required) ---
+import auth from '../middleware/auth.js';
+import User from '../models/User.js';
+import File from '../models/File.js';
+import Block from '../models/Block.js';
+import Invitation from '../models/Invitation.js';
 
 // @route   GET /api/reports/predictive-forecasting
 // @desc    Calculate storage burn rate and predict capacity exhaustion
@@ -143,4 +145,4 @@ router.get('/access-matrix', auth, async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router; //

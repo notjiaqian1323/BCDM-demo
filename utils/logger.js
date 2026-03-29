@@ -1,9 +1,11 @@
-const Log = require('../models/Log');
-const geoip = require('geoip-lite'); // 🌍 1. Import the library
+// utils/logger.js - ESM Version
+import geoip from 'geoip-lite';
+import Log from '../models/Log.js'; // 🚨 Extension required
 
 const getTime = () => new Date().toLocaleTimeString('en-GB', { hour12: false });
 
-const addLog = async (type, message, req = null, details = null) => {
+// Exporting as a named export
+export const addLog = async (type, message, req = null, details = null) => {
     try {
         let ipAddress = null;
         let location = 'Unknown';
@@ -16,16 +18,13 @@ const addLog = async (type, message, req = null, details = null) => {
             ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
             // 🛑 FYP DEBUGGING TRICK 🛑
-            // Localhost IPs (::1 or 127.0.0.1) cannot be geo-located because they aren't on the public internet.
-            // For testing your dashboard, we will temporarily force a public Malaysian IP if you are on localhost.
             if (ipAddress === '::1' || ipAddress === '127.0.0.1') {
                 ipAddress = '175.143.60.1'; // Example TM Net IP in Malaysia
             }
 
-            // 🌍 2. Translate IP to Location
+            // 🌍 Translate IP to Location
             const geo = geoip.lookup(ipAddress);
             if (geo) {
-                // geo object contains: { country: 'MY', city: 'Kuala Lumpur', ll: [lat, long], etc. }
                 location = `${geo.city || 'Unknown City'}, ${geo.country}`;
             }
 
@@ -40,7 +39,7 @@ const addLog = async (type, message, req = null, details = null) => {
             message,
             details,
             ipAddress,
-            location, // 🌍 3. Save the translated location
+            location,
             userAgent,
             endpoint,
             user: userId
@@ -54,7 +53,8 @@ const addLog = async (type, message, req = null, details = null) => {
     }
 };
 
-const getLogs = async (limit = 50) => {
+// Exporting as a named export
+export const getLogs = async (limit = 50) => {
     try {
         const logs = await Log.find({}, null, {
             sort: { timestamp: -1 },
@@ -66,5 +66,3 @@ const getLogs = async (limit = 50) => {
         return [];
     }
 };
-
-module.exports = { addLog, getLogs };

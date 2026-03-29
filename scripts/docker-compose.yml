@@ -1,0 +1,58 @@
+services:
+  # 1. Redis Database
+  redis:
+    image: "redis:alpine"
+    container_name: "my-redis"
+    ports:
+      - "6379:6379"
+    restart: always
+
+  # 2. Python NLP Microservice
+  nlp-engine:
+    build:
+      context: ..
+      dockerfile: scripts/Dockerfile.python # 👈 Points to the Python instructions
+    container_name: "nlp-engine"
+    ports:
+      - "8000:8000"
+    environment:
+      - TESSERACT_PATH=/usr/bin/tesseract
+    depends_on:
+      - redis
+    volumes:
+      - nlp_model_cache:/root/.cache/huggingface # Persistent cache
+      - ../scripts:/app/scripts
+      - shared_temp:/app/temp
+
+  # 3. Main Node.js Server
+  api-server:
+    build:
+      context: ..
+      dockerfile: scripts/Dockerfile        # 👈 Points to the Node instructions
+    container_name: "api-server"
+    command: ["node", "server.js"]
+    ports:
+      - "5001:5001"
+    env_file: ../.env
+    volumes:
+      - ../secrets:/app/secrets # 👈 This pulls the FILE from your folder
+    depends_on:
+      - redis
+      - nlp-engine
+
+  # Node Worker Service
+  worker:
+    build:
+      context: ..
+      dockerfile: scripts/Dockerfile        # 👈 Re-uses the Node instructions
+    container_name: "nlp-worker"
+    command: ["node", "worker.js"]
+    env_file: ../.env
+    depends_on:
+      - redis
+    volumes:
+      - shared_temp:/app/temp
+
+volumes:
+  nlp_model_cache:
+  shared_temp:

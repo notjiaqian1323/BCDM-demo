@@ -1,4 +1,5 @@
-const mongoose = require('mongoose');
+// models/User.js - ESM Version
+import mongoose from 'mongoose';
 
 const UserSchema = new mongoose.Schema({
     username: { type: String, required: true },
@@ -73,23 +74,22 @@ const UserSchema = new mongoose.Schema({
 
 // Helper method to check if user is currently restricted
 UserSchema.methods.isRestricted = function() {
-    // Example Threshold: If score < 50, they are restricted
     return this.trustScore < 50;
 };
 
 // Helper method to check if user is banned
 UserSchema.methods.checkBanStatus = function() {
-    if (!this.isBanned) return false; // Not banned
+    if (!this.isBanned) return false;
 
-    // Check if ban has expired
     if (this.banExpires && new Date() > this.banExpires) {
         this.isBanned = false;
         this.banReason = null;
         this.banExpires = null;
-        this.save(); // Auto-unban
+        this.save();
         return false;
     }
-    return true; // Still banned
+    return true;
 };
 
-module.exports = mongoose.model('User', UserSchema);
+// Exporting the model as default for ESM
+export default mongoose.model('User', UserSchema);

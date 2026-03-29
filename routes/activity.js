@@ -1,7 +1,10 @@
-const express = require('express');
+// routes/activity.js - ESM Version
+import express from 'express';
 const router = express.Router();
-const auth = require('../middleware/auth');
-const Activity = require('../models/Activity');
+
+// --- Local Imports (🚨 CRITICAL: .js extensions required) ---
+import auth from '../middleware/auth.js';
+import Activity from '../models/Activity.js';
 
 // @route   GET /api/activity
 router.get('/', auth, async (req, res) => {
@@ -10,11 +13,11 @@ router.get('/', auth, async (req, res) => {
         const activities = await Activity.find({ userId: req.user.id })
             .sort({ date: -1 })
             .limit(10);
-            
+
         res.json(activities);
     } catch (err) {
         res.status(500).send('Server Error');
     }
 });
 
-module.exports = router;
+export default router;

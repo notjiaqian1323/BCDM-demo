@@ -1,17 +1,36 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const path = require('path');
-require('dotenv').config();
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+import Stripe from 'stripe';
 
-// 🛠️ PERFORMANCE FIX: Move these imports to the top level!
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const User = require('./models/User');
-const Activity = require('./models/Activity');
+// --- 1. ESM SETUP (__dirname shim) ---
+// Since ESM doesn't have __dirname, we recreate it here
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+dotenv.config();
+
+// --- 2. MODELS & STRIPE IMPORT ---
+// 🚨 CRITICAL: You must include the .js extension for local files
+import User from './models/User.js';
+import Activity from './models/Activity.js';
+
+// Import routes
+import authRoutes from './routes/auth.js';
+import storageRoutes from './routes/storage.js';
+import blockchainRoutes from './routes/blockchain.js';
+import subscriptionRoutes from './routes/subscription.js';
+import activityRoutes from './routes/activity.js';
+import reportsRoutes from './routes/reports.js';
+import adminRoutes from './routes/admin.js';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const app = express();
 
-// --- 1. STRIPE WEBHOOK (Perfectly positioned above express.json!) ---
+// --- 3. STRIPE WEBHOOK ---
 app.post('/api/subscription/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
     let event;
@@ -24,23 +43,19 @@ app.post('/api/subscription/webhook', express.raw({ type: 'application/json' }),
     }
 
     try {
-        // --- EVENT: NEW SUBSCRIPTION ---
         if (event.type === 'checkout.session.completed') {
             const session = event.data.object;
-
             const userId = session.client_reference_id;
             const purchasedPlan = session.metadata.planName;
 
             const user = await User.findById(userId);
             if (user) {
                 user.package = purchasedPlan;
-
                 if (purchasedPlan === 'Premium') {
                     user.storageLimit = 100 * 1024 * 1024 * 1024; // 100GB
                 } else if (purchasedPlan === 'Enterprise') {
                     user.storageLimit = 500 * 1024 * 1024 * 1024; // 500GB
                 }
-
                 user.stripeCustomerId = session.customer;
                 await user.save();
 
@@ -53,28 +68,23 @@ app.post('/api/subscription/webhook', express.raw({ type: 'application/json' }),
             }
         }
 
-        // --- EVENT: RECURRING RENEWAL ---
         if (event.type === 'invoice.paid') {
             const session = event.data.object;
             const user = await User.findOne({ stripeCustomerId: session.customer });
-
             if (user && session.lines && session.lines.data.length > 0) {
-                // 🛠️ BUG FIX: Correctly pathing to the end timestamp
                 user.subscriptionEnd = new Date(session.lines.data[0].period.end * 1000);
                 await user.save();
                 console.log(`🔄 Subscription renewed for user: ${user.email}`);
             }
         }
-
         res.json({ received: true });
-
     } catch (dbError) {
         console.error("💥 Database Error inside Webhook:", dbError);
         res.status(500).send("Database Update Failed");
     }
 });
 
-// --- 2. MIDDLEWARE ---
+// --- 4. MIDDLEWARE ---
 app.use(express.json());
 app.use(cors({
     origin: '*',
@@ -82,22 +92,23 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token']
 }));
 
-// --- 3. ROUTES ---
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/storage', require('./routes/storage'));
-app.use('/api/blockchain', require('./routes/blockchain'));
-app.use('/api/subscription', require('./routes/subscription'));
-app.use('/api/activity', require('./routes/activity'));
-app.use('/api/reports', require('./routes/reports'));
-app.use('/api/admin', require('./routes/admin'));
+// --- 5. ROUTES ---
+app.use('/api/auth', authRoutes);
+app.use('/api/storage', storageRoutes);
+app.use('/api/blockchain', blockchainRoutes);
+app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/activity', activityRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/admin', adminRoutes);
 
-// --- 4. GLOBAL ERROR HANDLER ---
+// --- 6. GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({ msg: 'Something went wrong!', error: err.message });
 });
 
-// --- 5. DATABASE CONNECTION ---
+// --- 7. DATABASE CONNECTION ---
+// ESM supports top-level await, but keeping the .then structure for now is fine
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log("✅ MongoDB Connected"))
     .catch(err => {

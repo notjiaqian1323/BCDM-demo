@@ -7,13 +7,25 @@ from gliner import GLiNER
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
+import torch
+device = "cpu"
 
 # --- CONFIGURATION ---
-TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# 1. Try to get path from environment variable (useful for Docker/Linux)
+# 2. Fallback to common Linux location
+# 3. Fallback to your specific Windows path if the above fail
+TESSERACT_PATH = os.getenv(
+    "TESSERACT_PATH",
+    "/usr/bin/tesseract" if os.name != 'nt' else r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+)
+
 if TESSERACT_PATH and os.path.exists(TESSERACT_PATH):
     install_folder = os.path.dirname(TESSERACT_PATH)
     tessdata_folder = os.path.join(install_folder, 'tessdata')
     os.environ["TESSDATA_PREFIX"] = tessdata_folder
+    # On Linux/Unix, we often need to point pytesseract to the binary
+    # If you use the pytesseract wrapper, you'd set:
+    # pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
 def log_debug(msg):
     sys.stderr.write(f"[Python DEBUG] {msg}\n")
@@ -27,7 +39,7 @@ def log_progress(msg):
 try:
     log_debug("🧠 Loading GLiNER Small model into memory...")
     # 🚀 UPGRADE 1: Smaller model = 2x speed with ~98% of the accuracy
-    model = GLiNER.from_pretrained("urchade/gliner_small-v2.1")
+    model = GLiNER.from_pretrained("urchade/gliner_small-v2.1").to(device)
     log_debug("✅ GLiNER Model Loaded and Ready for API Requests!")
 except Exception as e:
     log_debug(f"❌ Critical Error loading GLiNER: {e}")
@@ -199,4 +211,4 @@ def process_pdf_route(req: ScanRequest):
 if __name__ == "__main__":
     # Start the server on port 8000
     log_debug("🚀 Starting FastAPI Server...")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

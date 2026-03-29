@@ -1,5 +1,5 @@
-// models/Block.js
-const mongoose = require('mongoose');
+// models/Block.js - ESM Version
+import mongoose from 'mongoose';
 
 const BlockSchema = new mongoose.Schema({
     index: { type: Number, required: true },
@@ -11,4 +11,5 @@ const BlockSchema = new mongoose.Schema({
     ethTxHash: { type: String, default: "Pending" }
 });
 
-module.exports = mongoose.model('block', BlockSchema);
+// Exporting the model as default for ESM
+export default mongoose.model('block', BlockSchema);

@@ -1,30 +1,44 @@
-// worker.js
-const Queue = require('bull');
-const mongoose = require('mongoose');
-const AWS = require('aws-sdk');
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
+// worker.js - ESM Version
+import Queue from 'bull';
+import mongoose from 'mongoose';
+import AWS from 'aws-sdk';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import axios from 'axios';
+import dotenv from 'dotenv';
 
-// Models & Utils
-const File = require('./models/File');
-const User = require('./models/User');
-const { decryptBuffer, encryptBuffer } = require('./utils/encryption');
-const LOG_URL = 'http://localhost:5002/api/admin/log';
+// --- 1. MODELS & UTILS (🚨 CRITICAL: .js extensions required) ---
+import File from './models/File.js';
+import User from './models/User.js';
+import { decryptBuffer, encryptBuffer } from './utils/encryption.js';
 
-require('dotenv').config();
+// --- 2. ESM SETUP (__dirname shim) ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config();
+
+// 🚨 DOCKER FIX: Point to the API Server container, not localhost
+const BASE_API_URL = process.env.API_SERVER_URL || 'http://api-server:5001';
+const LOG_URL = `${BASE_API_URL}/api/admin/log`;
+const BLOCKCHAIN_API_URL = `${BASE_API_URL}/api/blockchain/log`;
 
 // Helper Function
 async function logToAdmin(type, message) {
     console.log(`[WORKER] ${message}`);
     try { await axios.post(LOG_URL, { type, message }); }
-    catch (e) { /* Ignore connection errors */ }
+    catch (e) { /* Ignore connection errors silently */ }
 }
 
 const logWorker = (msg, data = {}) => console.log(`[${new Date().toISOString()}] 👷 [WORKER] ${msg}`, JSON.stringify(data));
-const logError = (msg, error) => console.error(`[${new Date().toISOString()}] ❌ [WORKER ERROR] ${msg}`, error.message || error);
+const logError = (msg, error) => {
+    // Safely extract the message whether it's an object, string, or undefined
+    const errorMsg = error?.message || error || "Unknown Error Object";
+    console.error(`[${new Date().toISOString()}] ❌ [WORKER ERROR] ${msg}:`, errorMsg);
+};
 
-// --- CONFIGURATION ---
+// --- 3. CONFIGURATION ---
 mongoose.connect(process.env.MONGO_URI)
     .then(() => logWorker("Connected to MongoDB"))
     .catch(err => logError("DB Connection Failed", err));
@@ -35,9 +49,8 @@ const s3 = new AWS.S3({
     region: process.env.AWS_REGION
 });
 
-// 🐛 THE FIX: Queue name MUST match the upload route ('nlp-scanning')
-const nlpQueue = new Queue('nlp-scanning', process.env.REDIS_URL || 'redis://127.0.0.1:6379');
-const BLOCKCHAIN_API_URL = 'http://localhost:5002/api/blockchain/log';
+// 🚨 DOCKER FIX: Point to the Redis container
+const nlpQueue = new Queue('nlp-scanning', process.env.REDIS_URL || 'redis://redis:6379');
 
 nlpQueue.on('error', (err) => logError('Redis Connection Error', err));
 nlpQueue.on('failed', (job, err) => logError(`Job ${job.id} failed`, err));
@@ -45,13 +58,12 @@ nlpQueue.on('ready', () => logWorker('Ready to accept jobs!'));
 
 logWorker("Compliance Worker is running and waiting for jobs...");
 
-// --- MAIN PROCESSOR ---
+// --- 4. MAIN PROCESSOR ---
 nlpQueue.process(async (job) => {
     const { fileId, s3Key, originalName, userId } = job.data;
     logWorker(`JOB STARTED: ${job.id}`, { file: originalName, user: userId });
     await logToAdmin('WORKER', `Job Started: Scanning ${originalName}...`);
 
-    // Ensure temp directory exists
     const tempDir = path.join(__dirname, 'temp');
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
@@ -61,53 +73,72 @@ nlpQueue.process(async (job) => {
     try {
         await File.findByIdAndUpdate(fileId, { complianceStatus: 'scanning' });
 
-        // 1. DOWNLOAD FROM S3
         logWorker(`Job ${job.id}: Downloading from S3...`);
         const s3Object = await s3.getObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: s3Key }).promise();
-
-        // Note: Assuming your encryption util gracefully handles unencrypted buffers if needed
-        //const decryptedBuffer = decryptBuffer(s3Object.Body);
         fs.writeFileSync(tempInput, s3Object.Body);
 
-
-        // 2. RUN PYTHON NLP (Via Fast Microservice)
         logWorker(`Job ${job.id}: Sending to Python AI Microservice...`);
         let jsonResult;
+        let isSuccess = false;
+        let retries = 0;
+        const maxRetries = 15; // Wait up to 5 minutes (15 retries * 20 seconds)
 
-        try {
-            // Post the file paths to our new Python API running on port 8000
-            const response = await axios.post('http://127.0.0.1:8000/scan', {
-                input_path: tempInput,
-                output_path: tempOutput
-            });
+        while (!isSuccess && retries < maxRetries) {
+            try {
+                // 🚨 CLEAN FIX: Ensure we don't double up on the /scan path
+                let nlpScanUrl = process.env.NLP_ENGINE_URL || 'http://nlp-engine:8000';
+                console.log(`[WORKER] NLP Engine URL: ${nlpScanUrl}`);
 
-            // Axios automatically parses the JSON response for us!
-            jsonResult = response.data;
-            logWorker(`Job ${job.id}: Python Microservice finished successfully`);
+                // If the URL doesn't end in /scan, add it. If it does, leave it alone.
+                if (!nlpScanUrl.endsWith('/scan')) {
+                    nlpScanUrl = `${nlpScanUrl}/scan`;
+                }
 
-        } catch (apiError) {
-            // If Python throws an HTTPException, we catch it here
-            const errorMsg = apiError.response ? apiError.response.data.detail : apiError.message;
-            logError(`Job ${job.id}: Python Microservice failed`, errorMsg);
-            throw new Error(`AI Scan Failed: ${errorMsg}`);
+                console.log(`[WORKER] NLP Engine URL: ${nlpScanUrl}`);
+
+                // Send the request
+                const response = await axios.post(nlpScanUrl, {
+                    input_path: tempInput,
+                    output_path: tempOutput
+                }, {
+                    timeout: 600000 // 10 minutes processing time once connected
+                });
+
+                jsonResult = response.data;
+                isSuccess = true; // Break the loop!
+                logWorker(`Job ${job.id}: Python Microservice finished successfully`);
+
+            } catch (apiError) {
+                // Check if the door is simply closed (Model still loading)
+                if (apiError.code === 'ECONNREFUSED') {
+                    retries++;
+                    logWorker(`Job ${job.id}: AI Engine port closed (Still loading models). Retry ${retries}/${maxRetries} in 20s...`);
+                    await new Promise(resolve => setTimeout(resolve, 20000)); // Sleep for 20s
+                } else {
+                    // It's a REAL error (like a 500 Server Error or 422 Bad Data)
+                    const status = apiError.response?.status || "NETWORK_ERROR";
+                    const detail = apiError.response?.data?.detail || apiError.message || "Unknown error";
+
+                    logError(`Job ${job.id}: Python Microservice failed (${status})`, detail);
+                    throw new Error(`AI Scan Failed: ${detail}`);
+                }
+            }
         }
 
-        // 3. PARSE RESULTS
-        // Because Axios parsed the JSON, we don't need a try/catch JSON.parse() anymore.
+        // If it looped 15 times and never connected
+        if (!isSuccess) {
+            throw new Error("AI Scan Timeout: Python engine never opened its port after 5 minutes.");
+        }
+
         let report = jsonResult.findings || [];
         let riskMeta = jsonResult.meta || { risk_score: 100, classification: "PUBLIC", keywords_found: [] };
 
         const user = await User.findById(userId);
         if (!user) throw new Error("User not found");
 
-        // 🛑 4. CRITICAL: DATA LOSS PREVENTION (DLP)
         if (riskMeta.classification === 'INTERNAL' || riskMeta.classification === 'RESTRICTED') {
             logWorker(`Job ${job.id}: ⛔ RESTRICTED CONTENT DETECTED. Executing DLP protocols.`);
-
-            // Delete from AWS
             await s3.deleteObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: s3Key }).promise();
-
-            // Update DB
             await File.findByIdAndUpdate(fileId, {
                 complianceStatus: 'rejected',
                 riskScore: riskMeta.risk_score,
@@ -116,7 +147,6 @@ nlpQueue.process(async (job) => {
                 rejectionReason: `Policy Violation: Restricted keywords found.`
             });
 
-            // Penalize User
             const penalty = 20;
             user.trustScore = Math.max(0, user.trustScore - penalty);
             user.violationCount += 1;
@@ -127,44 +157,33 @@ nlpQueue.process(async (job) => {
             }
             await user.save();
             await logToAdmin('CRITICAL', `⛔ FILE REJECTED! User ${userId} uploaded restricted content.`);
-
-            // Exit early - do not proceed to redaction
             return;
         }
 
-        // ⚠️ 5. STANDARD: PII REDACTION
         const violations = report.length;
         if (violations > 0) {
-            const penalty = Math.min(violations, 5); // Max 5 points for PII
+            const penalty = Math.min(violations, 5);
             user.trustScore = Math.max(0, user.trustScore - penalty);
             user.violationCount += 1;
             await user.save();
             await logToAdmin('WARNING', `⚠️ PII Redacted. User penalized -${penalty}.`);
 
-            // Upload Redacted File
-            // Upload Redacted File
             if (fs.existsSync(tempOutput)) {
                 const redactedBuffer = fs.readFileSync(tempOutput);
-
-                // 🛑 CRITICAL FIX: If you aren't encrypting the initial upload,
-                // do not encrypt the redacted one, or it will download as garbage bytes!
-                // const encryptedRedacted = encryptBuffer(redactedBuffer);
-
                 const newS3Key = s3Key.includes('.') ? s3Key.replace(/\.[^/.]+$/, "_redacted$&") : s3Key + '_redacted';
 
                 await s3.upload({
                     Bucket: process.env.AWS_BUCKET_NAME,
                     Key: newS3Key,
-                    Body: redactedBuffer // <--- Using the raw buffer instead of encrypted
+                    Body: redactedBuffer
                 }).promise();
 
-                // 🗑️ CRITICAL S3 CLEANUP: Delete the original dangerous file!
                 logWorker(`Job ${job.id}: 🧹 Deleting original unredacted file from S3...`);
                 await s3.deleteObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: s3Key }).promise();
 
                 await File.findByIdAndUpdate(fileId, {
                     complianceStatus: 'redacted',
-                    s3Key: newS3Key, // 🛡️ OVERWRITE the main s3Key so the download route gets the safe file!
+                    s3Key: newS3Key,
                     redactedS3Key: newS3Key,
                     piiReport: report,
                     riskScore: riskMeta.risk_score,
@@ -172,7 +191,6 @@ nlpQueue.process(async (job) => {
                 });
             }
         } else {
-            // ✅ 6. CLEAN FILE
             if (user.trustScore < 100) {
                 user.trustScore += 1;
                 await user.save();
@@ -190,7 +208,6 @@ nlpQueue.process(async (job) => {
         logError(`Job ${job.id}: CRITICAL FAILURE`, err);
         await File.findByIdAndUpdate(fileId, { complianceStatus: 'failed' });
     } finally {
-        // 7. CLEANUP TEMP FILES
         if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput);
         if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput);
     }
