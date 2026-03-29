@@ -1,5 +1,6 @@
 // routes/admin.js - ESM Version
 import express from 'express';
+import fs from 'node:fs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { VertexAI, HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
@@ -410,6 +411,55 @@ router.get('/ai-profile/:id', [auth, admin], async (req, res) => {
     } catch (err) {
         console.error("💥 [VERTEX AI PROFILE ERROR]:", err);
         res.status(500).json({ analysis: "⚠️ AI Agent Offline or Failed to Execute." });
+    }
+});
+
+// @route   GET /api/admin/ai-health
+// @desc    Verify GCP Service Account & Vertex AI Connectivity
+router.get('/ai-health', auth, async (req, res) => {
+    // 1. Double check the Environment Variable
+    const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    console.log(`🔍 [AI-HEALTH] Checking Path: ${keyPath}`);
+
+    // 2. Quick check if the file actually exists inside the container
+    if (!fs.existsSync(keyPath)) {
+        return res.status(500).json({
+            status: "ERROR",
+            message: "GCP Key file not found inside container. Check your Docker volume mount."
+        });
+    }
+
+    try {
+        // 3. Attempt a tiny "Hello World" with the Vertex AI SDK
+        const vertexAI = new VertexAI({
+            project: process.env.GCP_PROJECT_ID,
+            location: process.env.GCP_LOCATION || 'us-central1'
+        });
+
+        const model = vertexAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+        const testPrompt = "Respond with exactly the word 'READY' if you can hear me.";
+        const result = await model.generateContent(testPrompt);
+        const response = await result.response;
+        const text = response.candidates[0].content.parts[0].text;
+
+        if (text.includes("READY")) {
+            return res.json({
+                status: "AUTHENTICATED",
+                message: "Vertex AI is linked and responding.",
+                engine: "gemini-2.5-flash"
+            });
+        } else {
+            throw new Error("Unexpected response from AI");
+        }
+
+    } catch (err) {
+        console.error("💥 [AI-HEALTH] Authentication Failed:", err);
+        res.status(401).json({
+            status: "UNAUTHORIZED",
+            message: "GCP Authentication failed. Check Service Account permissions.",
+            error: err.message
+        });
     }
 });
 

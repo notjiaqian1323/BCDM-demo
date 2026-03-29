@@ -18,3 +18,4 @@ model-best/
 # Ignore System Files
 .DS_Store
 Thumbs.db
+secrets/
