@@ -13,17 +13,16 @@ WORKDIR /app
 # Set the environment variable so the script finds Tesseract
 ENV TESSERACT_PATH=/usr/bin/tesseract
 
-# Copy requirements from the project root (context: ..)
+# Copy requirements
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire project code
-COPY . .
+# 🚨 CHANGE THIS: Instead of COPY . ., only copy the NLP-related files
+# Assuming your nlp_engine.py is in the root or a specific folder
+COPY nlp_engine.py .
+# If you have other python files or folders needed for NLP, copy them specifically:
+# COPY utils/ ./utils/
 
-# Expose the NLP Engine port
+# Expose and Run
 EXPOSE 8000
-
-# Run the NLP FastAPI/Flask service
 CMD ["python", "nlp_engine.py"]
