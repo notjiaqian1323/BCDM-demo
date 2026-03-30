@@ -14,7 +14,16 @@ COPY package*.json ./
 RUN npm install --production
 
 # Copy the rest of the project files from the root
-COPY . .
+# 🚨 CHANGE THIS: Only copy what the Node Server/Worker needs
+COPY server.js .
+COPY worker.js .
+COPY contractABI.json .
+COPY routes/ ./routes/
+COPY middleware/ ./middleware/
+COPY models/ ./models/
+COPY utils/ ./utils/
+COPY artifacts/ ./artifacts/
+# COPY config/ ./config/      # Add any other folders you use
 
 # Expose the API port
 EXPOSE 5001

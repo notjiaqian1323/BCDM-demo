@@ -9,7 +9,7 @@ import { VertexAI, HarmCategory, HarmBlockThreshold } from '@google-cloud/vertex
 import User from '../models/User.js';
 import auth from '../middleware/auth.js';
 import admin from '../middleware/admin.js';
-import { addLog, getLogs } from '../utils/logger.js';
+import { addLog, getLogs, getUserLogs} from '../utils/logger.js';
 import Log from '../models/Log.js';
 
 const router = express.Router();
@@ -352,23 +352,23 @@ router.get('/ai-profile/:id', [auth, admin], async (req, res) => {
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ analysis: "User not found." });
 
-        let rawLogs = getLogs();
-        if (rawLogs instanceof Promise) rawLogs = await rawLogs;
-        if (!Array.isArray(rawLogs)) rawLogs = rawLogs.logs || rawLogs.data || [];
-
-        const userLogsRaw = rawLogs.filter(log => log.userId === req.params.id || log.username === user.username);
+        // 🚨 IMPROVEMENT 1: Fetch only logs for THIS user directly from DB
+        const userLogsRaw = await getUserLogs(req.params.id, 50);
         const currentLogCount = userLogsRaw.length;
 
+        // Check Cache
         if (aiProfileCache[req.params.id] && aiProfileCache[req.params.id].logCount === currentLogCount) {
             return res.json({
                 analysis: aiProfileCache[req.params.id].summary +
-                    `<br><br><span style="font-size: 0.75rem; color: var(--text-secondary); background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px;"><i class="fa-solid fa-bolt text-amber"></i> Loaded from Cache</span>`
+                    `<br><br><span style="font-size: 0.75rem; color: var(--text-secondary);"><i class="fa-solid fa-bolt text-amber"></i> Loaded from Cache</span>`
             });
         }
 
-        const userLogsFormatted = userLogsRaw.slice(0, 50).map(log => {
-            const time = log.timestamp || log.date ? new Date(log.timestamp || log.date).toISOString() : "Unknown Time";
-            return `[${time}] ${log.type || 'INFO'} - ${log.message || log.details}`;
+        // 🚨 IMPROVEMENT 2: Rich Context Formatting
+        // We include Location and Endpoint so the AI can detect patterns
+        const userLogsFormatted = userLogsRaw.map(log => {
+            const time = log.timestamp ? new Date(log.timestamp).toLocaleString('en-GB') : "Unknown Time";
+            return `[${time}] ${log.type} - ${log.message} | Loc: ${log.location || 'Unknown'} | Action: ${log.endpoint || 'N/A'}`;
         }).join('\n');
 
         const vertex_ai = new VertexAI({
@@ -376,41 +376,34 @@ router.get('/ai-profile/:id', [auth, admin], async (req, res) => {
             location: process.env.GCP_LOCATION || 'us-central1'
         });
 
-        const model = vertex_ai.preview.getGenerativeModel({
-            model: 'gemini-2.5-flash',
-            generationConfig: { maxOutputTokens: 3000, temperature: 0.2 },
-            safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            ],
+        const model = vertex_ai.getGenerativeModel({
+            model: 'gemini-2.5-flash', // Using 1.5-flash is faster/cheaper for text summaries
         });
 
         const prompt = `
-        You are a Cybersecurity Profiler for the BCDS Cloud System.
-        Write a concise, 3-sentence behavioral profile on the user: ${user.username} (Email: ${user.email}, Current Trust Score: ${user.trustScore}).
+        You are a Cybersecurity Behavioral Analyst for the BCDS Cloud System.
+        Analyze the following activity logs for User: ${user.username} (Trust Score: ${user.trustScore}).
         
+        Write a 3-sentence professional security profile. 
+        - Sentence 1: General behavior and frequency of access.
+        - Sentence 2: Specific patterns (e.g., locations used, specific workspaces accessed).
+        - Sentence 3: Risk assessment based on log types (e.g., presence of SECURITY or CRITICAL logs).
+
         USER ACTIVITY LOGS:
-        ${userLogsFormatted ? userLogsFormatted : 'No logs available for this user.'}
+        ${userLogsFormatted || 'No logs found in database for this specific user.'}
         `;
 
-        const response = await model.generateContent(prompt);
-        let aiResponseText = "⚠️ AI Profiling failed to generate.";
-        const candidate = response?.response?.candidates?.[0];
+        const result = await model.generateContent(prompt);
+        const aiResponseText = result.response.candidates[0].content.parts[0].text;
 
-        if (candidate?.content?.parts?.[0]?.text) {
-            aiResponseText = candidate.content.parts[0].text;
-            aiProfileCache[req.params.id] = { summary: aiResponseText, logCount: currentLogCount };
-        } else if (candidate?.finishReason === 'SAFETY') {
-            aiResponseText = "⚠️ <strong>Analysis Blocked:</strong> Safety filters triggered.";
-        }
+        // Save to Cache
+        aiProfileCache[req.params.id] = { summary: aiResponseText, logCount: currentLogCount };
 
         res.json({ analysis: aiResponseText });
 
     } catch (err) {
         console.error("💥 [VERTEX AI PROFILE ERROR]:", err);
-        res.status(500).json({ analysis: "⚠️ AI Agent Offline or Failed to Execute." });
+        res.status(500).json({ analysis: "⚠️ AI Analysis Engine Timeout." });
     }
 });
 

@@ -66,3 +66,16 @@ export const getLogs = async (limit = 50) => {
         return [];
     }
 };
+
+export const getUserLogs = async (userId, limit = 50) => {
+    try {
+        // We query the 'user' field because that's what you defined in addLog
+        return await Log.find({ user: userId }, null,{
+            sort: {timestamp: -1},
+            limit: limit
+        }).exec();
+    } catch (err) {
+        console.error(`❌ [LOGGER] Failed to fetch logs for user ${userId}:`, err.message);
+        return [];
+    }
+};
