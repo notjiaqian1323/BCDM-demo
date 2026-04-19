@@ -6,6 +6,7 @@ import os
 from gliner import GLiNER
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import List
 import uvicorn
 import torch
 device = "cpu"
@@ -207,6 +208,50 @@ def process_pdf_route(req: ScanRequest):
             "keywords_found": list(found_keywords_in_doc)
         }
     }
+
+# --- C. MANUAL REDACTION ROUTE (HITL PHASE) ---
+class ManualRedactRequest(BaseModel):
+    input_path: str
+    output_path: str
+    words_to_redact: List[str]
+
+@app.post("/manual-redact")
+def manual_redact_route(req: ManualRedactRequest):
+    log_progress(f"📥 Received MANUAL REDACT request for: {req.input_path}")
+    log_progress(f"🎯 Words to redact: {len(req.words_to_redact)} items")
+
+    if not os.path.exists(req.input_path):
+        raise HTTPException(status_code=404, detail="Input PDF not found")
+
+    try:
+        # 1. Open the document
+        doc = fitz.open(req.input_path)
+        total_pages = len(doc)
+
+        # 2. Loop through every page
+        for page_num, page in enumerate(doc):
+            # 3. Search and redact each specific word the user chose
+            for text_to_hide in req.words_to_redact:
+                # Find all instances of this exact string on the page
+                text_instances = page.search_for(text_to_hide)
+
+                for inst in text_instances:
+                    # Add a black box over the coordinates
+                    page.add_redact_annot(inst, fill=(0, 0, 0))
+
+            # Apply the redactions to the page
+            page.apply_redactions()
+
+        # 4. Save the new redacted document
+        log_progress("Saving selectively redacted PDF...")
+        doc.save(req.output_path, garbage=4, deflate=True)
+        doc.close()
+
+        return {"status": "success", "message": f"Redacted {len(req.words_to_redact)} unique items successfully."}
+
+    except Exception as e:
+        log_debug(f"❌ Critical Error during manual redaction: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     # Start the server on port 8000

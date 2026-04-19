@@ -26,6 +26,25 @@
     </div>
 </header>
 
+<div class="panel" style="margin-bottom: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px;">
+        <div>
+            <h3 style="margin: 0; color: var(--text-primary);">
+                <i class="fa-solid fa-server text-blue"></i> Database Integrity Audit
+            </h3>
+            <p style="margin: 5px 0 0 0; color: var(--text-secondary); font-size: 0.9rem;">
+                Perform a deep-scan cross-reference between MongoDB and the Ethereum Ledger.
+            </p>
+        </div>
+        <button id="runAuditBtn" class="action-btn" style="background: rgba(59, 130, 246, 0.15); border: 1px solid var(--accent-blue); color: var(--text-primary); padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+            <i class="fa-solid fa-radar text-blue"></i> Run System Audit
+        </button>
+    </div>
+
+    <div id="auditResults" style="display: none; padding: 0 20px 20px 20px; border-top: 1px solid var(--border-color); margin-top: 0; padding-top: 20px;">
+    </div>
+</div>
+
 <div class="main-grid">
 
     <div class="left-column">

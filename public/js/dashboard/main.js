@@ -1,6 +1,6 @@
-import { fetchStats, fetchUsers, fetchAllUsers, fetchLogs, toggleBanAPI, fetchTrafficData } from './api.js';
+// Add runSystemAuditAPI to your existing api.js imports
+import { fetchStats, fetchUsers, fetchAllUsers, fetchLogs, toggleBanAPI, fetchTrafficData, runAISweep, runSystemAuditAPI } from './api.js';
 import { renderStats, renderUserTable, renderLogs, setLogFilterMode, renderTrafficChart, renderAllUsersModal } from './ui.js';
-import { runAISweep } from './api.js';
 
 // --- GLOBAL STATE ---
 let activeFilterId = null; // If set, we only fetch logs for this user
@@ -212,6 +212,78 @@ function setupEventListeners() {
             }
         });
     } // <-- Properly closed the AI button block here
+
+    // 🛡️ SYSTEM AUDIT BUTTON
+    const btnRunAudit = document.getElementById('runAuditBtn');
+    if (btnRunAudit) {
+        btnRunAudit.addEventListener('click', async () => {
+            const resultsDiv = document.getElementById('auditResults');
+
+            // 1. UI Loading State
+            btnRunAudit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning Ledger...';
+            btnRunAudit.disabled = true;
+            resultsDiv.style.display = 'block';
+            resultsDiv.innerHTML = `
+                <div style="text-align:center; padding: 20px;">
+                    <i class="fa-solid fa-microchip fa-beat fa-2x text-secondary" style="margin-bottom: 10px;"></i>
+                    <p>Cross-referencing database records with Ganache Blockchain...</p>
+                </div>`;
+
+            try {
+                // 2. Fetch data via API Layer
+                const report = await runSystemAuditAPI();
+
+                // 3. Process and Render Results (DARK THEME)
+                const isHealthy = report.tamperedCount === 0;
+
+                let html = `
+                    <div style="display: flex; gap: 20px;">
+                        <div style="flex: 1; padding: 15px; background: ${isHealthy ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.15)'}; border-radius: 8px; border: 1px solid ${isHealthy ? 'var(--accent-green)' : 'var(--accent-red)'};">
+                            <h4 style="margin-top:0; color: ${isHealthy ? 'var(--accent-green)' : 'var(--accent-red)'};">
+                                ${isHealthy ? '<i class="fa-solid fa-shield-check"></i> System Healthy' : '<i class="fa-solid fa-triangle-exclamation pulse"></i> Security Breach Detected'}
+                            </h4>
+                            <p style="margin: 5px 0; color: var(--text-primary);"><strong>Total Files Scanned:</strong> ${report.totalFiles}</p>
+                            <p style="margin: 5px 0; color: var(--text-primary);"><strong>Cryptographically Verified:</strong> <span style="color: var(--accent-green); font-weight: bold;">${report.verifiedCount}</span></p>
+                            <p style="margin: 5px 0; color: var(--text-primary);"><strong>Tampered / Unverified:</strong> <span style="color: var(--accent-red); font-weight: bold;">${report.tamperedCount}</span></p>
+                        </div>
+                    </div>
+                `;
+
+                // If tampered, append the anomaly log (Dark Mode style)
+                if (report.tamperedCount > 0) {
+                    html += `
+                        <div style="margin-top: 15px;">
+                            <strong style="color: var(--accent-red);">Compromised Files Log:</strong>
+                            <ul style="background: rgba(0,0,0,0.3); border: 1px solid var(--accent-red); padding: 10px 10px 10px 30px; border-radius: 5px; color: var(--text-primary); font-size: 0.9rem;">
+                                ${report.anomalies.map(a => `
+                                    <li style="margin-bottom: 5px;">
+                                        <strong style="color: var(--accent-red);">${a.fileName}</strong>: 
+                                        <span style="color: var(--text-secondary);">${a.issue}</span> 
+                                        <em style="opacity: 0.7;">(ID: ${a.fileId})</em>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                resultsDiv.innerHTML = html;
+
+            } catch (err) {
+                console.error("Audit Error:", err);
+                resultsDiv.innerHTML = `
+                    <div style="padding: 15px; background: #fef2f2; border: 1px solid #ef4444; border-radius: 8px; color: #b91c1c;">
+                        <strong><i class="fa-solid fa-circle-xmark"></i> Audit Failed</strong><br>
+                        Could not complete the system scan. Ensure the backend and Ganache network are running.
+                    </div>`;
+            } finally {
+                // 4. Reset Button State
+                btnRunAudit.innerHTML = '<i class="fa-solid fa-radar"></i> Run System Audit';
+                btnRunAudit.disabled = false;
+            }
+        });
+    }
+
     // 🎯 NEW: AI Feed Action Delegation (For the dynamically spawned Freeze buttons)
     const aiFeed = document.getElementById('ai-feed');
     if (aiFeed) {

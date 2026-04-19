@@ -456,4 +456,64 @@ router.get('/ai-health', auth, async (req, res) => {
     }
 });
 
+// @route   GET /api/storage/audit
+router.get('/audit', auth, async (req, res) => {
+    console.log(`\n🕵️‍♂️ [AUDIT API] System-Wide Integrity Audit initiated by User: ${req.user.id}`);
+
+    try {
+        // 1. Fetch all active files owned by this user (or all files if this is a super-admin)
+        const files = await File.find({ owner: req.user.id, isDeleted: false });
+
+        let report = {
+            totalFiles: files.length,
+            verifiedCount: 0,
+            tamperedCount: 0,
+            anomalies: [],
+            scanTime: new Date().toISOString()
+        };
+
+        if (files.length === 0) return res.json(report);
+
+        const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:8545");
+
+        // 2. Loop through and verify each file
+        for (let file of files) {
+            // If the file hasn't been anchored yet, skip it
+            if (!file.ethTxHash) continue;
+
+            try {
+                const tx = await provider.getTransaction(file.ethTxHash);
+                const localBlock = await BlockModel.findOne({ index: file.blockchainIndex });
+                const onChainHash = tx ? tx.data.replace("0x", "") : null;
+
+                if (onChainHash && localBlock && onChainHash === localBlock.hash) {
+                    report.verifiedCount++;
+                } else {
+                    report.tamperedCount++;
+                    report.anomalies.push({
+                        fileId: file._id,
+                        fileName: file.fileName,
+                        issue: !localBlock ? "Local log missing" : "Hash mismatch"
+                    });
+                }
+            } catch (err) {
+                console.error(`⚠️ Error verifying file ${file.fileName}:`, err.message);
+                report.tamperedCount++;
+                report.anomalies.push({
+                    fileId: file._id,
+                    fileName: file.fileName,
+                    issue: "Blockchain unreachable or tx missing"
+                });
+            }
+        }
+
+        console.log(`✅ [AUDIT API] Audit Complete. Verified: ${report.verifiedCount}, Tampered: ${report.tamperedCount}`);
+        res.json(report);
+
+    } catch (err) {
+        console.error("💥 [AUDIT API] CRITICAL ERROR:", err);
+        res.status(500).json({ msg: "System Audit Failed" });
+    }
+});
+
 export default router;

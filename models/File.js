@@ -20,9 +20,15 @@ const FileSchema = new mongoose.Schema({
     // --- 3. NEW: COMPLIANCE & PII FEATURES ---
     redactedS3Key: { type: String, default: null },
 
+    // --- 4. NEW: IMMUTABLE FILE RECORDS LINKED TO CHAIN
+    blockchainIndex: Number,
+    ethTxHash: String,
+    isDeleted: Boolean,
+
     complianceStatus: {
         type: String,
-        enum: ['pending', 'scanning', 'clean', 'redacted', 'failed', 'skipped', 'rejected'],
+        // 🛠️ CHANGE 1: Added 'awaiting_review' to the enum
+        enum: ['pending', 'scanning', 'awaiting_review', 'clean', 'redacted', 'failed', 'skipped', 'rejected'],
         default: 'pending'
     },
 
@@ -35,13 +41,19 @@ const FileSchema = new mongoose.Schema({
     riskKeywords: [String],
     rejectionReason: { type: String, default: '' },
 
-    // The JSON report from GLiNER
+    // The JSON report from GLiNER / Gemini
     piiReport: [
         {
             text: String,
             type: { type: String },
             page: Number,
-            score: Number
+            score: Number,
+            // 🛠️ CHANGE 2: Added 'action' to track human decisions
+            action: {
+                type: String,
+                enum: ['pending', 'redact', 'keep'],
+                default: 'pending'
+            }
         }
     ],
 });

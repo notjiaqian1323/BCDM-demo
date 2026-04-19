@@ -443,3 +443,4 @@ async function processPasswordReset() {
         btn.innerHTML = '<i class="fa-solid fa-key"></i> Update Password';
     }
 }
+
