@@ -60,9 +60,7 @@ logWorker("Compliance Worker is running and waiting for jobs...");
 
 // --- 4. MAIN PROCESSOR ---
 nlpQueue.process(async (job) => {
-    const { fileId, s3Key, originalName, userId } = job.data;
-    logWorker(`JOB STARTED: ${job.id}`, { file: originalName, user: userId });
-    await logToAdmin('WORKER', `Job Started: Scanning ${originalName}...`);
+    const { fileId, s3Key, originalName, userId, mode, itemsToRedact } = job.data;
 
     const tempDir = path.join(__dirname, 'temp');
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
@@ -71,13 +69,55 @@ nlpQueue.process(async (job) => {
     const tempOutput = path.join(tempDir, `out_${job.id}.pdf`);
 
     try {
-        await File.findByIdAndUpdate(fileId, { complianceStatus: 'scanning' });
-
         logWorker(`Job ${job.id}: Downloading from S3...`);
         const s3Object = await s3.getObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: s3Key }).promise();
         fs.writeFileSync(tempInput, s3Object.Body);
 
-        logWorker(`Job ${job.id}: Sending to Python AI Microservice...`);
+        // ==========================================
+        // 🔀 BRANCH A: SELECTIVE MANUAL REDACTION
+        // ==========================================
+        if (mode === 'selective_redact') {
+            logWorker(`Job ${job.id}: Executing SELECTIVE REDACTION for ${originalName}`);
+
+            // Send exact words to the Python Microservice's new manual redaction endpoint
+            const nlpEngineUrl = process.env.NLP_ENGINE_URL || 'http://nlp-engine:8000';
+
+            await axios.post(`${nlpEngineUrl}/manual-redact`, {
+                input_path: tempInput,
+                output_path: tempOutput,
+                words_to_redact: itemsToRedact // Array of strings chosen by the user
+            }, { timeout: 300000 });
+
+            // Read the newly redacted file
+            const redactedBuffer = fs.readFileSync(tempOutput);
+            const newS3Key = s3Key.includes('.') ? s3Key.replace(/\.[^/.]+$/, "_redacted$&") : s3Key + '_redacted';
+
+            // Upload the redacted version
+            await s3.upload({
+                Bucket: process.env.AWS_BUCKET_NAME,
+                Key: newS3Key,
+                Body: redactedBuffer
+            }).promise();
+
+            // Delete original unredacted file for security compliance
+            await s3.deleteObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: s3Key }).promise();
+
+            // Update Database to final state
+            await File.findByIdAndUpdate(fileId, {
+                complianceStatus: 'redacted',
+                s3Key: newS3Key,
+                redactedS3Key: newS3Key
+            });
+
+            await logToAdmin('SUCCESS', `✅ Selective Redaction Complete: ${originalName}`);
+            return; // 🛑 EXIT EARLY, JOB DONE.
+        }
+
+        // ==========================================
+        // 🔀 BRANCH B: INITIAL AI SCAN (Your existing logic)
+        // ==========================================
+        await File.findByIdAndUpdate(fileId, { complianceStatus: 'scanning' });
+        logWorker(`Job ${job.id}: Sending to Python AI Microservice for Initial Scan...`);
         let jsonResult;
         let isSuccess = false;
         let retries = 0;
@@ -161,46 +201,43 @@ nlpQueue.process(async (job) => {
         }
 
         const violations = report.length;
+
         if (violations > 0) {
-            const penalty = Math.min(violations, 5);
-            user.trustScore = Math.max(0, user.trustScore - penalty);
-            user.violationCount += 1;
-            await user.save();
-            await logToAdmin('WARNING', `⚠️ PII Redacted. User penalized -${penalty}.`);
+            logWorker(`Job ${job.id}: ⚠️ PII Detected. Pausing pipeline for user review.`);
 
-            if (fs.existsSync(tempOutput)) {
-                const redactedBuffer = fs.readFileSync(tempOutput);
-                const newS3Key = s3Key.includes('.') ? s3Key.replace(/\.[^/.]+$/, "_redacted$&") : s3Key + '_redacted';
+            // 1. Map the report to include the default 'pending' action for the UI checklist
+            const pendingReport = report.map(item => ({
+                ...item,
+                action: 'pending'
+            }));
 
-                await s3.upload({
-                    Bucket: process.env.AWS_BUCKET_NAME,
-                    Key: newS3Key,
-                    Body: redactedBuffer
-                }).promise();
+            // 2. Update File state to 'awaiting_review'
+            await File.findByIdAndUpdate(fileId, {
+                complianceStatus: 'awaiting_review',
+                piiReport: pendingReport,
+                riskScore: riskMeta.risk_score,
+                classification: riskMeta.classification
+            });
 
-                logWorker(`Job ${job.id}: 🧹 Deleting original unredacted file from S3...`);
-                await s3.deleteObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: s3Key }).promise();
+            // Note: We DO NOT penalize the user here anymore.
+            // We DO NOT upload the redacted file or delete the original yet.
+            // The pipeline simply stops and waits for the human.
+            await logToAdmin('WARNING', `⚠️ PII Detected in ${originalName}. Holding for user review.`);
 
-                await File.findByIdAndUpdate(fileId, {
-                    complianceStatus: 'redacted',
-                    s3Key: newS3Key,
-                    redactedS3Key: newS3Key,
-                    piiReport: report,
-                    riskScore: riskMeta.risk_score,
-                    classification: riskMeta.classification
-                });
-            }
         } else {
+            // If it's 100% clean, it proceeds as normal
             if (user.trustScore < 100) {
                 user.trustScore += 1;
                 await user.save();
             }
+
             await File.findByIdAndUpdate(fileId, {
                 complianceStatus: 'clean',
-                piiReport: report,
+                piiReport: report, // empty array
                 riskScore: riskMeta.risk_score,
                 classification: riskMeta.classification
             });
+
             await logToAdmin('SUCCESS', `✅ Scan Clean: ${originalName}`);
         }
 

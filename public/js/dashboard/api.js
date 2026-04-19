@@ -126,3 +126,16 @@ export async function fetchUserChartData(userId) {
     if (!res.ok) throw new Error("Failed to fetch user chart analytics.");
     return res.json();
 }
+
+// 🛡️ SYSTEM AUDIT API
+export async function runSystemAuditAPI() {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`http://127.0.0.1:5001/api/storage/audit`, {
+        headers: { 'x-auth-token': token }
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.msg || "Audit failed to execute");
+
+    return data;
+}

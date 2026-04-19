@@ -123,9 +123,14 @@ router.post('/workspaces', auth, async (req, res) => {
         }
 
         const requestedBytes = (parseInt(allocateGB) || 1) * 1024 * 1024 * 1024;
-
         const alreadyAllocated = user.workspacesCreated.reduce((acc, ws) => acc + ws.allocatedBytes, 0);
         const remainingQuota = user.storageLimit - alreadyAllocated;
+        const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:8545");
+        await provider.getNetwork();
+        const wallet = new ethers.Wallet(process.env.SERVER_PRIVATE_KEY, provider);
+        // Reusing __dirname shim for path resolution
+        const contractABI = JSON.parse(fs.readFileSync(path.join(__dirname, '../contractABI.json'), 'utf8'));
+        const aclContract = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractABI, wallet);
 
         if (requestedBytes > remainingQuota) {
             const remainingGB = (remainingQuota / (1024 * 1024 * 1024)).toFixed(2);
@@ -139,16 +144,36 @@ router.post('/workspaces', auth, async (req, res) => {
             return res.status(400).json({ msg: `Workspace "${workspaceName}" already exists.` });
         }
 
+        // 1. Create S3 Folder
         await s3.putObject({
             Bucket: process.env.AWS_BUCKET_NAME,
             Key: `${user.email}/${workspaceName}/`
         }).promise();
 
+        // 2. Create the workspace object so Mongoose assigns an _id
         user.workspacesCreated.push({
             name: workspaceName,
             allocatedBytes: requestedBytes
         });
 
+        // Get the newly created workspace _id and sanitize it
+        const newWorkspaceId = user.workspacesCreated[user.workspacesCreated.length - 1]._id.toString().toLowerCase();
+        const userIdClean = req.user.id.toString().toLowerCase();
+
+        // 🛡️ 3. BLOCKCHAIN REGISTRATION (THE MISSING PIECE)
+        console.log(`[DEBUG] Registering Workspace on Blockchain -> WS: ${newWorkspaceId} | User: ${userIdClean}`);
+        try {
+            // Note: aclContract must be connected to a Wallet/Signer to write data, not just a Provider!
+            const tx = await aclContract.grantAccess(newWorkspaceId, userIdClean);
+            await tx.wait(); // Wait for the block to be mined
+            console.log(`✅ [DEBUG] Access Granted on Ledger! TxHash: ${tx.hash}`);
+        } catch (chainErr) {
+            console.error("💥 Blockchain Registration Failed:", chainErr.message);
+            // If the blockchain fails, we shouldn't save to MongoDB to prevent "Dirty State"
+            return res.status(500).json({ msg: "Failed to register workspace access on the Blockchain." });
+        }
+
+        // 4. Save to MongoDB ONLY if Blockchain succeeds
         await user.save();
 
         await new Activity({
