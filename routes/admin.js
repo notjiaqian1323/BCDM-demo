@@ -377,7 +377,7 @@ router.get('/ai-profile/:id', [auth, admin], async (req, res) => {
         });
 
         const model = vertex_ai.getGenerativeModel({
-            model: 'gemini-2.5-flash', // Using 1.5-flash is faster/cheaper for text summaries
+            model: 'gemini-2.5-flash',
         });
 
         const prompt = `

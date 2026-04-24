@@ -112,7 +112,7 @@ log_info "Running Node.js deployment script..."
 
 # If you haven't changed the code inside deploy.js yet, use: node scripts/deploy.cjs
 
-node scripts/deploy.js 2>&1 | tee deploy.log
+node deploy.js 2>&1 | tee deploy.log
 
 DEPLOY_STATUS=$?
 

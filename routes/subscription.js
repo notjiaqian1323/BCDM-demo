@@ -253,7 +253,10 @@ router.post('/accept-invite/:id', auth, async (req, res) => {
             const aclContract = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractABI, wallet);
 
             console.log("🔗 Connecting to Blockchain...");
-            const tx = await aclContract.grantAccess(invite.workspaceId.toString(), req.user.id.toString());
+            const safeWorkspaceId = invite.workspaceId.toString().toLowerCase();
+            const safeUserId = req.user.id.toString().toLowerCase();
+
+            const tx = await aclContract.grantAccess(safeWorkspaceId, safeUserId);
             await tx.wait(1);
             console.log(`✅ Blockchain ACL Updated`);
 

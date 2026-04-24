@@ -253,14 +253,25 @@ router.get('/files', auth, async (req, res) => {
 
     try {
         const targetOwner = await getTargetDrive(req);
-        // 🛡️ THE FIX: Add isDeleted: false to the filter
+
+        // 🛡️ THE UPDATED FILTER WITH PRIVACY SHIELD
         const filter = {
             owner: targetOwner._id,
             workspaceId: driveId === 'personal' ? null : driveId,
-            isDeleted: false // 👈 This hides the "Blockchain-only" records
+            isDeleted: false, // Hides the "Blockchain-only" records
+
+            // 👇 THIS IS THE NEW PRIVACY LOGIC 👇
+            $or: [
+                // Condition 1: The file has finished processing and is safe for everyone in the workspace
+                { complianceStatus: { $in: ['clean', 'redacted'] } },
+
+                // Condition 2: The file is still 'scanning' or 'awaiting_review',
+                // BUT the person fetching the list is the one who uploaded it!
+                { uploadedBy: req.user.id }
+            ]
         };
 
-        console.log(`[STORAGE API] Querying MongoDB for files... Filter:`, filter);
+        console.log(`[STORAGE API] Querying MongoDB for files... Filter:`, JSON.stringify(filter));
         const files = await File.find(filter).populate('uploadedBy', 'username').sort({ date: -1 });
 
         console.log(`✅ [STORAGE API] Success: Found ${files.length} active files.`);
@@ -601,8 +612,11 @@ router.post('/nlp-commit/:id', auth, async (req, res) => {
             return res.status(404).json({ msg: "File not found" });
         }
 
-        // 🛡️ Security Check: Ensure the user owns this file
-        if (file.owner.toString() !== req.user.id && req.user.role !== 'admin') {
+        // 🛡️ Security Check: Ensure the user owns this file OR uploaded it
+        const isWorkspaceOwner = file.owner.toString() === req.user.id;
+        const isUploader = file.uploadedBy && file.uploadedBy.toString() === req.user.id;
+
+        if (!isWorkspaceOwner && !isUploader && req.user.role !== 'admin') {
             return res.status(403).json({ msg: "Not authorized to modify this file." });
         }
 
